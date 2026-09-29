@@ -8,6 +8,8 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- Child tables first so a re-import also works with FOREIGN_KEY_CHECKS = 1
+DROP TABLE IF EXISTS `reviews`;
 DROP TABLE IF EXISTS `contact_messages`;
 DROP TABLE IF EXISTS `settings`;
 DROP TABLE IF EXISTS `order_events`;
