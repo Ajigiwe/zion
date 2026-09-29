@@ -3,10 +3,13 @@
 .env.*
 !.env.example
 
-# runtime storage (never commit logs, uploads or tunnel state)
+# runtime storage: keep the folders (and the upload .htaccess) in git,
+# never their contents
 /storage/logs/*
+!/storage/logs/.gitkeep
 /storage/uploads/*
 !/storage/uploads/.htaccess
+!/storage/uploads/.gitkeep
 
 # OS / editor noise
 Thumbs.db

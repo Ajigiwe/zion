@@ -13,12 +13,19 @@ DirectoryIndex index.php
 </IfModule>
 
 # Never serve configuration, dumps or logs.
-<FilesMatch "^(\.env|\.env\..*|.*\.log|schema\.sql|seed\.sql|composer\.(json|lock)|\.git.*)$">
+<FilesMatch "^(\.env|\.env\..*|.*\.log|.*\.pid|schema\.sql|seed\.sql|composer\.(json|lock)|\.git.*)$">
     Require all denied
 </FilesMatch>
 
 # --------------------------------------------------------------- routing
 RewriteEngine On
+
+# Everything under storage/ is private except user uploads.
+RewriteRule ^storage/(?!uploads/) - [F,L]
+
+# Helper scripts are CLI-only; the pre-flight page is the single exception.
+RewriteRule ^tools/doctor\.php$ - [L]
+RewriteRule ^tools/ - [F,L]
 
 # Dynamic crawler files (correct absolute URLs for the live host).
 RewriteRule ^robots\.txt$ robots.php [L]
