@@ -3,11 +3,13 @@
 # Layout: the checkout lives in ~/repositories/zion while the site lives in
 # ~/public_html, so Deploy copies the code across, then keeps runtime state
 # healthy and runs the pre-flight check.
-# cPanel runs all tasks in one shell with cwd = repository root.
+# Every path is absolute (no reliance on cwd or exported variables) and the
+# copy uses tar, which every host ships (the earlier rsync step failed here).
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/ziongrou/public_html/
-    - mkdir -p "$DEPLOYPATH/storage/logs" "$DEPLOYPATH/storage/uploads"
-    - rsync -a --delete --include 'storage/uploads/.htaccess' --exclude 'storage/uploads/*' --exclude 'storage/logs/*' --exclude '.git' --exclude '.env' ./ "$DEPLOYPATH/"
-    - test -f "$DEPLOYPATH/.env" || cp "$DEPLOYPATH/.env.example" "$DEPLOYPATH/.env"
-    - php "$DEPLOYPATH/tools/doctor.php"
+    - mkdir -p /home/ziongrou/public_html/storage/logs /home/ziongrou/public_html/storage/uploads
+    - find /home/ziongrou/public_html -mindepth 1 -maxdepth 1 ! -name storage ! -name cgi-bin ! -name php.ini ! -name .env -exec rm -rf {} +
+    - tar -C /home/ziongrou/repositories/zion -cf - --exclude=./.git --exclude=./.env --exclude=./storage/logs --exclude=./storage/uploads --exclude=./deploy.sh --exclude=./.cpanel.yml . | tar -xf - -C /home/ziongrou/public_html
+    - cp /home/ziongrou/repositories/zion/storage/uploads/.htaccess /home/ziongrou/public_html/storage/uploads/.htaccess
+    - test -f /home/ziongrou/public_html/.env || cp /home/ziongrou/public_html/.env.example /home/ziongrou/public_html/.env
+    - php /home/ziongrou/public_html/tools/doctor.php

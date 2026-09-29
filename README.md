@@ -55,7 +55,7 @@ web (verified: all 403).
   ```
 
 - cPanel's **default** layout (checkout in `~/repositories/NAME` instead of
-  the web root) works too: `.cpanel.yml` rsyncs the code into `public_html`
+  the web root) works too: `.cpanel.yml` copies the code into `public_html`
   when you click **Deploy HEAD Commit**, and `deploy.sh` detects that layout
   automatically.
 
@@ -111,13 +111,15 @@ If the host has shell access disabled, the same loop runs inside cPanel:
 1. Push from your machine.
 2. cPanel -> *Git Version Control* -> your repository -> **Update from Remote**
    (pulls the new commit into `~/repositories/NAME` - code only, not live yet).
-3. Click **Deploy HEAD Commit** - runs the `.cpanel.yml` tasks: rsync the
-   checkout into `public_html` (never touching `.env`, uploads or logs), then
-   `php tools/doctor.php`. The deployment turns red if any check fails.
+3. Click **Deploy HEAD Commit** - runs the `.cpanel.yml` tasks: copy the
+   checkout into `public_html` with `tar` (never touching `.env`, uploads or
+   logs), then `php tools/doctor.php`. The deployment turns red if any check
+   fails.
 4. Or verify in the browser: `/tools/doctor.php`.
 
 `deploy.sh` and the Deploy button do the same job; use whichever the host
-allows. The rsync step needs `rsync` (present on standard cPanel installs).
+allows. The Deploy button only needs `tar` (present on every host);
+`deploy.sh` needs `rsync`, which Git Bash and most shells provide.
 
 ## Checks and tests
 
