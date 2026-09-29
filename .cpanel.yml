@@ -1,0 +1,9 @@
+---
+# cPanel "Deploy HEAD Commit" hook (Git Version Control).
+# The checkout IS the public web root, so nothing needs copying - these
+# tasks keep runtime state healthy and run the pre-flight check.
+deployment:
+  tasks:
+    - mkdir -p storage/logs storage/uploads
+    - test -f .env || cp .env.example .env
+    - php tools/doctor.php

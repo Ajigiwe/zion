@@ -99,6 +99,21 @@ gitignored, which is exactly why re-deploys cannot wipe your uploads or secrets.
   or add a deploy key; `deploy.sh` prints a hint if the fetch fails.
 - Deploy another branch with `DEPLOY_BRANCH=staging bash deploy.sh`.
 
+### No shell? cPanel Git Version Control (no SSH needed)
+
+If the host has shell access disabled, the same loop runs inside cPanel:
+
+1. Push from your machine.
+2. cPanel -> *Git Version Control* -> your repository -> **Update from Remote**
+   (pulls the new commit into `public_html`).
+3. Click **Deploy HEAD Commit** - runs the `.cpanel.yml` tasks: re-create
+   `storage/*`, seed `.env` if missing, then `php tools/doctor.php` (the deploy
+   turns red if any check fails).
+4. Or verify in the browser: `/tools/doctor.php`.
+
+`deploy.sh` and the Deploy button do the same job; use whichever the host
+allows.
+
 ## Checks and tests
 
 ```powershell
