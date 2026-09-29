@@ -280,13 +280,17 @@ $bundles = [
 ];
 
 // ---------------------------------------------------------------- emit SQL
+// CAREFUL: seed.sql has been hand-maintained since it was first generated
+// (the reviews INSERT at the end only exists there, plus copy edits).
+// Regenerating overwrites those changes - edit seed.sql directly instead,
+// and treat this script as the original generator, not the source of truth.
 $sql = [];
 $sql[] = '-- ============================================================================
 -- Zion Groups of Companies - seed data (generated from the Stitch mockups)
--- Import:  mysql -u root velora_shop < seed.sql
+-- Import:  mysql -u USER -p DB_NAME < seed.sql
+-- phpMyAdmin: click the target database first, then Import this file.
 -- ============================================================================';
 
-$sql[] = 'USE `velora_shop`;';
 $sql[] = 'SET NAMES utf8mb4;';
 $sql[] = '';
 

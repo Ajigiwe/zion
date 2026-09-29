@@ -1,13 +1,9 @@
 -- ============================================================================
 -- Zion Groups of Companies - MySQL / MariaDB schema
--- Import:  mysql -u root < schema.sql
+-- Import:  mysql -u USER -p DB_NAME < schema.sql
+-- phpMyAdmin: click the target database first, then Import this file.
+-- (No CREATE DATABASE / USE here - shared hosts only allow your own DB.)
 -- ============================================================================
-
-CREATE DATABASE IF NOT EXISTS `velora_shop`
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE `velora_shop`;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;

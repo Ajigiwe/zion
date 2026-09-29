@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Zion Groups of Companies - seed data (generated from the Stitch mockups)
--- Import:  mysql -u root velora_shop < seed.sql
+-- Import:  mysql -u USER -p DB_NAME < seed.sql
+-- phpMyAdmin: click the target database first, then Import this file.
 -- ============================================================================
-USE `velora_shop`;
 SET NAMES utf8mb4;
 
 -- categories
