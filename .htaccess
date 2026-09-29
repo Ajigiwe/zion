@@ -20,6 +20,10 @@ DirectoryIndex index.php
 # --------------------------------------------------------------- routing
 RewriteEngine On
 
+# Hidden paths are never content (.git history, .user.ini, .env, editor dirs)
+# except ACME/.well-known for certificate issuance.
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L]
+
 # Everything under storage/ is private except user uploads.
 RewriteRule ^storage/(?!uploads/) - [F,L]
 

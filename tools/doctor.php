@@ -22,8 +22,12 @@ function chk(string $label, string $status, string $detail = ''): void
 
 /* --------------------------------------------------------------- .env ---- */
 $env = [];
-if (is_readable($root . '/.env')) {
-    foreach (file($root . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+$envFile = $root . '/.env';
+$envBroken = is_file($envFile) && !is_readable($envFile);
+if ($envBroken) {
+    chk('.env file', 'FAIL', 'exists but unreadable - chmod 600 .env (644 on very old mod_php hosts)');
+} elseif (is_readable($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         $line = trim($line);
         if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) {
             continue;
@@ -41,8 +45,10 @@ if (is_readable($root . '/.env')) {
 }
 $get = static fn(string $k, string $d = '') => $env[$k] ?? (getenv($k) !== false && getenv($k) !== '' ? (string) getenv($k) : $d);
 
-chk('.env file', $env !== [] ? 'PASS' : 'WARN',
-    $env !== [] ? 'found' : 'missing - copy .env.example to .env and fill in the host values');
+if (!$envBroken) {
+    chk('.env file', $env !== [] ? 'PASS' : 'WARN',
+        $env !== [] ? 'found' : 'missing - copy .env.example to .env and fill in the host values');
+}
 
 $appEnv   = $get('APP_ENV', 'development');
 $appDebug = $get('APP_DEBUG', $appEnv === 'production' ? 'false' : 'true');
@@ -170,7 +176,8 @@ echo '<style>body{font:14px/1.5 ui-monospace,Consolas,monospace;margin:2rem;back
     . 'td,th{border-bottom:1px solid #333;padding:.5rem;text-align:left;vertical-align:top}'
     . '.PASS{color:#7ee787}.WARN{color:#e3b341}.FAIL{color:#ff7b72;font-weight:700}'
     . '.banner{background:#7a1220;color:#fff;padding:1rem;margin-bottom:1.5rem;max-width:900px}</style>';
-echo '<div class="banner"><strong>Delete /tools/doctor.php once you have read this page.</strong></div>';
+echo '<div class="banner"><strong>Read-only diagnostics - no secrets are printed.</strong> '
+    . 'Safe to leave in place; to hide this page, remove the tools/doctor.php exception in .htaccess.</div>';
 echo '<h1>Zion server check</h1><table><tr><th>Status</th><th>Check</th><th>Detail</th></tr>';
 foreach ($rows as [$label, $status, $detail]) {
     echo '<tr><td class="' . $status . '">' . $status . '</td><td>' . htmlspecialchars($label) . '</td><td>'
