@@ -1,9 +1,13 @@
 ---
-# cPanel "Deploy HEAD Commit" hook (Git Version Control).
-# The checkout IS the public web root, so nothing needs copying - these
-# tasks keep runtime state healthy and run the pre-flight check.
+# cPanel Git Version Control - deployment hook.
+# Layout: the checkout lives in ~/repositories/zion while the site lives in
+# ~/public_html, so Deploy copies the code across, then keeps runtime state
+# healthy and runs the pre-flight check.
+# cPanel runs all tasks in one shell with cwd = repository root.
 deployment:
   tasks:
-    - mkdir -p storage/logs storage/uploads
-    - test -f .env || cp .env.example .env
-    - php tools/doctor.php
+    - export DEPLOYPATH=/home/ziongrou/public_html/
+    - mkdir -p "$DEPLOYPATH/storage/logs" "$DEPLOYPATH/storage/uploads"
+    - rsync -a --delete --include 'storage/uploads/.htaccess' --exclude 'storage/uploads/*' --exclude 'storage/logs/*' --exclude '.git' --exclude '.env' ./ "$DEPLOYPATH/"
+    - test -f "$DEPLOYPATH/.env" || cp "$DEPLOYPATH/.env.example" "$DEPLOYPATH/.env"
+    - php "$DEPLOYPATH/tools/doctor.php"

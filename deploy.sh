@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Zion Groups - deploy script for shared hosting (cPanel Terminal / SSH).
+# Zion Groups - deploy script (cPanel Terminal / SSH).
 #
-#   bash deploy.sh      update this checkout to the commit you just pushed,
+#   bash deploy.sh      update the checkout, sync it into the web root,
 #                       restore runtime folders, seed .env once, run doctor
 #
-# The repo root IS the web root (public_html): .htaccess blocks .git, .env,
-# logs and tools/ from the web, so a checkout there is safe. git only ever
-# touches tracked files - .env and storage/uploads are never modified.
+# Two layouts are supported:
+#   - checkout == web root (public_html): git update is the deploy
+#   - cPanel Git Version Control default (~/repositories/NAME): the code is
+#     copied into $HOME/public_html afterwards (rsync), .env/uploads kept
 #
-# First-time setup (repo not in this folder yet) is in README.md.
+# First-time setup (repo not cloned yet) is in README.md.
 #
-# Overridables:   DEPLOY_REPO=... DEPLOY_BRANCH=... bash deploy.sh
+# Overridables:   DEPLOY_REPO=... DEPLOY_BRANCH=... DEPLOY_TARGET=/path bash deploy.sh
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -45,28 +46,56 @@ if ! git checkout -q -B "$BRANCH" "origin/$BRANCH"; then
 fi
 AFTER="$(git rev-parse --short HEAD)"
 note "$BEFORE -> $AFTER  $(git log -1 --pretty=%s)"
-note "files: $(git ls-files | wc -l | tr -d ' ') tracked, $([ -f .env ] && echo '.env kept' || echo 'no .env yet')"
+note "files: $(git ls-files | wc -l | tr -d ' ') tracked"
+
+# ----------------------------------------------------------------- target ---
+TARGET="${DEPLOY_TARGET:-}"
+if [ -z "$TARGET" ]; then
+    case "$ROOT" in
+        */repositories/*) TARGET="$HOME/public_html" ;;
+        *)                TARGET="$ROOT" ;;
+    esac
+fi
+
+if [ "$TARGET" != "$ROOT" ]; then
+    step "Syncing $ROOT -> $TARGET"
+    command -v rsync >/dev/null 2>&1 || die "rsync not found (needed to copy the checkout into the web root)"
+    mkdir -p "$TARGET/storage/logs" "$TARGET/storage/uploads"
+    # --delete removes stale files; .env, uploads and logs are excluded so
+    # they survive every deploy. storage/uploads/.htaccess is force-included.
+    rsync -a --delete \
+        --include 'storage/uploads/.htaccess' \
+        --exclude 'storage/uploads/*' \
+        --exclude 'storage/logs/*' \
+        --exclude '.git' \
+        --exclude '.env' \
+        ./ "$TARGET/"
+    note "site files synced (checkout stays outside the web root)"
+else
+    TARGET="$ROOT"
+    note "checkout is the web root - nothing to copy"
+fi
 
 # -------------------------------------------------------- runtime folders ---
 step "Runtime folders"
-mkdir -p storage/logs storage/uploads
-chmod 755 storage storage/logs storage/uploads 2>/dev/null \
+mkdir -p "$TARGET/storage/logs" "$TARGET/storage/uploads"
+chmod 755 "$TARGET/storage" "$TARGET/storage/logs" "$TARGET/storage/uploads" 2>/dev/null \
     || note "chmod not allowed here (suPHP usually does not need it)"
 
 # ------------------------------------------------------------------- .env ---
-if [ ! -f .env ]; then
-    cp .env.example .env
-    chmod 600 .env 2>/dev/null || true
-    note "CREATED .env from .env.example - edit it now:"
+if [ ! -f "$TARGET/.env" ]; then
+    cp "$TARGET/.env.example" "$TARGET/.env"
+    chmod 600 "$TARGET/.env" 2>/dev/null || true
+    note "CREATED $TARGET/.env from .env.example - edit it now:"
     note "  DB_HOST/DB_NAME/DB_USER/DB_PASS, APP_URL, APP_ENV=production, APP_DEBUG=false"
 else
-    note ".env present (deploy never overwrites it)"
+    note "$TARGET/.env present (deploy never overwrites it)"
 fi
 
 # -------------------------------------------------------------- pre-flight ---
 if command -v php >/dev/null 2>&1; then
     step "Pre-flight (tools/doctor.php)"
-    if ! php tools/doctor.php; then
+    if ! php "$TARGET/tools/doctor.php"; then
         die "pre-flight reported FAIL rows - fix them, then run: bash deploy.sh"
     fi
 else
@@ -78,9 +107,10 @@ fi
 step "Deployed"
 note "commit : $AFTER  ($(git log -1 --pretty=%ad --date=short))"
 note "branch : $BRANCH"
-if [ -f .env ]; then
-    envv="$(grep -E '^APP_ENV='   .env | tail -n1 | cut -d= -f2- | tr -d '\r')"
-    dbg="$(grep -E '^APP_DEBUG='  .env | tail -n1 | cut -d= -f2- | tr -d '\r')"
+note "target : $TARGET"
+if [ -f "$TARGET/.env" ]; then
+    envv="$(grep -E '^APP_ENV='   "$TARGET/.env" | tail -n1 | cut -d= -f2- | tr -d '\r')"
+    dbg="$(grep -E '^APP_DEBUG='  "$TARGET/.env" | tail -n1 | cut -d= -f2- | tr -d '\r')"
     note "env    : APP_ENV=${envv:-<unset>}  APP_DEBUG=${dbg:-<unset>}"
     if [ "${envv:-development}" != "production" ] || [ "${dbg:-true}" != "false" ]; then
         note "reminder: set APP_ENV=production and APP_DEBUG=false for launch"
