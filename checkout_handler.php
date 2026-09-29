@@ -1,0 +1,176 @@
+<?php
+/** Creates the order from the checkout form. Included by actions.php. */
+
+declare(strict_types=1);
+
+// Normally included by actions.php; loaded directly too so a stray hit
+// renders the proper error flow instead of a fatal.
+require_once __DIR__ . '/config.php';
+
+$lines = cart_rows();
+if ($lines === []) {
+    flash_set('error', 'Your bag is empty.');
+    redirect_back(url('cart.php'));
+}
+
+$name    = trim((string) ($_POST['name'] ?? ''));
+$phone   = trim((string) ($_POST['phone'] ?? ''));
+$email   = trim((string) ($_POST['email'] ?? ''));
+$region  = trim((string) ($_POST['region'] ?? ''));
+$city    = trim((string) ($_POST['city'] ?? ''));
+$address = trim((string) ($_POST['address'] ?? ''));
+$method  = (string) ($_POST['shipping_method'] ?? 'metro');
+$channel = (string) ($_POST['payment_channel'] ?? 'paystack');
+$notes   = trim((string) ($_POST['notes'] ?? ''));
+$discreet = isset($_POST['discreet_pack']) ? 1 : 0;
+
+$errors = [];
+if ($name === '')    { $errors[] = 'Full name is required.'; }
+if ($phone === '')   { $errors[] = 'Phone number is required.'; }
+if ($region === '')  { $errors[] = 'Region is required.'; }
+if ($city === '')    { $errors[] = 'City / neighbourhood is required.'; }
+if ($address === '') { $errors[] = 'Street address is required.'; }
+if (!in_array($channel, ['paystack', 'cod'], true)) {
+    $errors[] = 'Please choose a payment method.';
+}
+if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+    $errors[] = 'That email address is not valid.';
+}
+
+if (!in_array($method, ['metro', 'regional', 'pickup'], true)) {
+    $method = 'metro';
+}
+[$shipCode, $shipLabel, $shipFee] = shipping_quote($region, $method);
+
+if ($errors !== []) {
+    flash_set('error', implode(' ', $errors));
+    redirect_back(url('checkout.php'));
+}
+
+$subtotal = 0.0;
+foreach ($lines as $l) {
+    $subtotal += (float) $l['unit_price'] * (int) $l['qty'];
+}
+
+$discount = 0.0;
+$promoCode = null;
+if (!empty($_SESSION['promo_code'])) {
+    $promo = promo_lookup((string) $_SESSION['promo_code']);
+    if ($promo !== null) {
+        $discount = promo_discount($promo, $subtotal);
+        $promoCode = $promo['code'];
+    } else {
+        unset($_SESSION['promo_code']);
+    }
+}
+
+$total = max(0.0, $subtotal - $discount + $shipFee);
+
+$paid = $channel !== 'cod';
+$status = $paid ? 'confirmed' : 'pending';
+
+try {
+    $orderNo = db_tx(function (PDO $pdo) use (
+        $lines, $name, $email, $phone, $region, $city, $address,
+        $shipCode, $shipLabel, $shipFee, $subtotal, $discount, $promoCode, $total,
+        $channel, $notes, $discreet, $status, $paid
+    ): array {
+        $orderNo = next_order_no();
+        $u = current_user();
+
+        $st = $pdo->prepare(
+            'INSERT INTO orders
+             (order_no, user_id, customer_name, email, phone, region, city, address,
+              shipping_method, shipping_label, shipping_fee, subtotal, discount, promo_code,
+              total, payment_channel, payment_reference, payment_status, status, discreet_pack, notes)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+        );
+        $st->execute([
+            $orderNo,
+            $u['id'] ?? null,
+            $name,
+            $email !== '' ? $email : ($u['email'] ?? null),
+            $phone,
+            $region,
+            $city,
+            $address,
+            $shipCode,
+            $shipLabel,
+            $shipFee,
+            $subtotal,
+            $discount,
+            $promoCode,
+            $total,
+            $channel,
+            $paid ? strtoupper($channel) . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)) : null,
+            $paid ? 'paid' : 'pending',
+            $status,
+            $discreet,
+            $notes !== '' ? $notes : null,
+        ]);
+        $orderId = (int) $pdo->lastInsertId();
+
+        $ins = $pdo->prepare(
+            'INSERT INTO order_items
+             (order_id, product_id, product_name, product_image, variant_text, unit_price, qty, line_total)
+             VALUES (?,?,?,?,?,?,?,?)'
+        );
+        foreach ($lines as $l) {
+            $variant = trim(implode(' - ', array_filter([
+                $l['variant_color'] ?? '',
+                $l['variant_size'] ?? '',
+            ])));
+            $ins->execute([
+                $orderId,
+                (int) $l['product_id'],
+                $l['name'],
+                $l['image_url'],
+                $variant !== '' ? $variant : null,
+                $l['unit_price'],
+                (int) $l['qty'],
+                (float) $l['unit_price'] * (int) $l['qty'],
+            ]);
+            // decrement stock
+            $pdo->prepare('UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?')
+                ->execute([(int) $l['qty'], (int) $l['product_id']]);
+        }
+
+        $ev = $pdo->prepare('INSERT INTO order_events (order_id, status, note) VALUES (?,?,?)');
+        $ev->execute([$orderId, 'pending', 'Order received']);
+        if ($paid) {
+            $ev->execute([$orderId, 'confirmed', 'Payment authorised - ' . $shipLabel]);
+        }
+
+        return [$orderNo, $orderId];
+    });
+} catch (Throwable $ex) {
+    error_log('order failed: ' . $ex->getMessage());
+    flash_set('error', 'We could not complete your order. Please try again.');
+    redirect_back(url('checkout.php'));
+}
+
+[$orderNo, $orderId] = $orderNo;
+
+cart_clear();
+unset($_SESSION['promo_code']);
+$_SESSION['my_orders'][] = $orderNo;
+
+// Low-stock watch - at most one alert per hour, only when something is at/below threshold.
+$low = db_all(
+    'SELECT name, sku, stock FROM products
+      WHERE is_active = 1 AND stock <= ?
+      ORDER BY stock ASC, name LIMIT 20',
+    [LOW_STOCK_THRESHOLD]
+);
+if ($low !== []) {
+    $stampFile = __DIR__ . '/storage/logs/last-low-stock-alert';
+    $last = is_file($stampFile) ? (int) @file_get_contents($stampFile) : 0;
+    if (time() - $last > 3600 && send_low_stock_alert($low, 'Triggered by order ' . $orderNo)) {
+        @mkdir(dirname($stampFile), 0775, true);
+        @file_put_contents($stampFile, (string) time());
+    }
+}
+
+flash_set('success', 'Order ' . $orderNo . ' confirmed. Thank you, ' . strtok($name, ' ') . '.');
+header('Location: ' . url('order_complete.php?no=' . urlencode($orderNo)));
+exit;

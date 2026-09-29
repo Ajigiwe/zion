@@ -1,0 +1,30 @@
+# Zion Groups of Companies - Apache configuration
+# Requires: mod_rewrite, mod_headers (both enabled by default in XAMPP/LAMP).
+
+Options -Indexes
+DirectoryIndex index.php
+
+# --------------------------------------------------------------- security
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# Never serve configuration, dumps or logs.
+<FilesMatch "^(\.env|\.env\..*|.*\.log|schema\.sql|seed\.sql|composer\.(json|lock)|\.git.*)$">
+    Require all denied
+</FilesMatch>
+
+# --------------------------------------------------------------- routing
+RewriteEngine On
+
+# Dynamic crawler files (correct absolute URLs for the live host).
+RewriteRule ^robots\.txt$ robots.php [L]
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+
+# ------------------------------------------------------------- HTTPS only
+# Uncomment once the certificate is installed - forces HTTPS site-wide.
+# RewriteCond %{HTTPS} !=on
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]

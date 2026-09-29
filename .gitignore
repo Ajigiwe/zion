@@ -1,0 +1,17 @@
+# environment / secrets
+.env
+.env.*
+!.env.example
+
+# runtime storage (never commit logs, uploads or tunnel state)
+/storage/logs/*
+/storage/uploads/*
+!/storage/uploads/.htaccess
+
+# OS / editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.idea/
+.vscode/

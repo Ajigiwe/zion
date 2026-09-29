@@ -1,0 +1,7 @@
+# Local image library - files are written by admin/upload.php only.
+Options -Indexes
+
+# Never execute a script out of the upload folder (Apache).
+<FilesMatch "(?i)\.(php|phtml|phar|cgi|pl|py|rb|sh|asp|aspx)$">
+    Require all denied
+</FilesMatch>

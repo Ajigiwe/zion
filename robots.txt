@@ -1,0 +1,23 @@
+# Zion Groups of Companies - crawler instructions
+# Static fallback for the PHP dev server; on Apache, .htaccess serves robots.php
+# instead so the Sitemap URL always carries the canonical production origin.
+
+User-agent: *
+Allow: /
+
+Disallow: /admin/
+Disallow: /actions.php
+Disallow: /cart.php
+Disallow: /checkout.php
+Disallow: /account.php
+Disallow: /orders.php
+Disallow: /order.php
+Disallow: /order_complete.php
+Disallow: /wishlist.php
+Disallow: /login.php
+Disallow: /register.php
+Disallow: /logout.php
+Disallow: /search.php
+
+User-agent: SemrushBot
+Disallow: /

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="Zion Group of Companies">
+  <defs>
+    <mask id="zionZMark" maskUnits="userSpaceOnUse" x="55" y="155" width="102" height="90">
+      <rect x="55" y="155" width="102" height="26" fill="#fff"/>
+      <rect x="55" y="219" width="102" height="26" fill="#fff"/>
+      <polygon points="112,155 157,155 100,245 55,245" fill="#fff"/>
+      <polygon points="122,155 132,155 75,245 65,245" fill="#000"/>
+    </mask>
+  </defs>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#c7a24e" stroke-width="16"/>
+  <g mask="url(#zionZMark)">
+    <rect x="55" y="155" width="102" height="90" fill="#c7a24e"/>
+  </g>
+  <text x="167" y="231" text-anchor="start" textLength="179" lengthAdjust="spacing"
+        font-family="Georgia, 'Times New Roman', serif" font-size="88" font-weight="700" fill="#c7a24e">ION</text>
+</svg>

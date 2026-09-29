@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="Zion Group of Companies">
+  <defs>
+    <mask id="zionZ" maskUnits="userSpaceOnUse" x="132" y="53" width="136" height="120">
+      <rect x="132" y="53" width="136" height="34" fill="#fff"/>
+      <rect x="132" y="139" width="136" height="34" fill="#fff"/>
+      <polygon points="208,53 268,53 192,173 132,173" fill="#fff"/>
+      <polygon points="222,53 235,53 159,173 146,173" fill="#000"/>
+    </mask>
+  </defs>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#c7a24e" stroke-width="16"/>
+  <g mask="url(#zionZ)">
+    <rect x="132" y="53" width="136" height="120" fill="#c7a24e"/>
+  </g>
+  <text x="200" y="245" text-anchor="middle" textLength="226" lengthAdjust="spacing"
+        font-family="Georgia, 'Times New Roman', serif" font-size="72" fill="#c7a24e">ZION</text>
+  <rect x="89" y="259" width="222" height="3" fill="#c7a24e"/>
+  <text x="200" y="291" text-anchor="middle" textLength="214" lengthAdjust="spacing"
+        font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="600" fill="#c7a24e">GROUP OF COMPANIES</text>
+</svg>

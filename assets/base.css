@@ -1,0 +1,29 @@
+/* Base layer for ZION GROUPS - mirrors the Stitch design system's <style> block. */
+
+/* Responsive page gutter: powers every .px-margin utility (see tailwind-config.js). */
+:root { --page-margin: 2.5rem; }
+@media (max-width: 1024px) { :root { --page-margin: 1.5rem; } }
+@media (max-width: 640px)  { :root { --page-margin: 1rem; } }
+
+@layer base {
+  html, body { margin: 0; padding: 0; }
+  body { overscroll-behavior: none; }
+  main > :first-child { margin-top: 0 !important; }
+  main > :last-child { margin-bottom: 0 !important; }
+}
+
+/* Account / checkout sidebars mirror the desktop nav behaviour */
+.scroll-thin { scrollbar-width: thin; }
+.scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #d9c1c3; border-radius: 999px; }
+
+/* Focus ring consistent with the design system's input focus state */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 2px solid rgba(114, 39, 55, 0.55);
+  outline-offset: 2px;
+}
+
+.qty-input::-webkit-outer-spin-button,
+.qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qty-input { -moz-appearance: textfield; }
