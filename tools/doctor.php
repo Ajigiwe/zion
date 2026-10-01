@@ -63,6 +63,9 @@ if ($get('APP_URL') === '') {
 
 /* -------------------------------------------------------------- PHP ------ */
 chk('PHP version', PHP_VERSION >= '8.2.0' ? 'PASS' : 'FAIL', PHP_VERSION . ' (need 8.2+)');
+chk('PHP SAPI', 'PASS', php_sapi_name() === false ? 'unknown' : (string) php_sapi_name());
+$loadedIni = php_ini_loaded_file();
+chk('loaded php.ini', 'PASS', $loadedIni !== false ? basename($loadedIni) : 'none - check .user.ini for overrides');
 
 foreach (['pdo_mysql' => 'database', 'mbstring' => 'text handling', 'fileinfo' => 'image uploads', 'session' => 'login/cart', 'filter' => 'validation'] as $ext => $why) {
     chk("extension $ext", extension_loaded($ext) ? 'PASS' : 'FAIL', $why);
