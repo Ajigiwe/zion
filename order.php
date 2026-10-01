@@ -273,7 +273,7 @@ render_head();
 
         <div class="bg-surface-container-lowest rounded-xl shadow-xs p-space-md">
           <h2 class="font-headline-sm text-headline-sm text-on-surface font-bold mb-2">Need help?</h2>
-          <p class="font-body-sm text-body-sm text-on-surface-variant mb-3">Our Accra concierge can change the delivery slot, swap a size or send a VAT invoice.</p>
+          <p class="font-body-sm text-body-sm text-on-surface-variant mb-3">Our Tarkwa team can change the delivery slot, swap a size or send a VAT invoice.</p>
           <div class="flex flex-col gap-2">
             <a class="px-4 py-2.5 bg-primary-container text-on-primary text-center rounded-lg font-label-nav text-label-nav font-bold uppercase tracking-wider hover:bg-primary transition-colors" href="<?= e(url('page.php?slug=contact')) ?>">Contact concierge</a>
             <a class="px-4 py-2.5 border border-outline-variant text-on-surface text-center rounded-lg font-label-nav text-label-nav uppercase hover:bg-surface-container transition-colors" href="<?= e(url('invoice.php?no=' . urlencode((string) $order['order_no']))) ?>" target="_blank" rel="noopener">Print invoice</a>

@@ -43,7 +43,7 @@ function shop_filters_form(string $idp = 'f'): void
           <select id="<?= e($idp) ?>-dept" name="dept" onchange="this.form.cat.value=''; this.form.submit()"
                   class="w-full appearance-none bg-surface-container border border-outline-variant rounded-lg pl-3 pr-9 py-2.5 font-body-sm text-body-sm text-on-surface cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary">
             <option value="">All Products</option>
-            <?php foreach (['lingerie' => 'Lingerie', 'instruments' => 'Musical Instruments'] as $k => $label): ?>
+            <?php foreach (['lingerie' => 'Lingerie', 'instruments' => 'Music, Audio & Church'] as $k => $label): ?>
               <option value="<?= e($k) ?>" <?= $dept === $k ? 'selected' : '' ?>><?= e($label) ?></option>
             <?php endforeach; ?>
           </select>

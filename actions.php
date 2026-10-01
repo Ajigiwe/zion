@@ -225,7 +225,7 @@ switch ($action) {
             [mb_substr($name, 0, 120), $email, mb_substr($phone, 0, 40), mb_substr($subject, 0, 160), $message]
         );
         $_SESSION['contact_last'] = time();
-        flash_set('success', 'Thank you, ' . strtok($name, ' ') . '. Your message is with our Accra team - we reply within two hours during business hours.');
+        flash_set('success', 'Thank you, ' . strtok($name, ' ') . '. Your message is with our Tarkwa team - we reply within two hours during business hours.');
         redirect_back($back);
 
     case 'newsletter':

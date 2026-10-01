@@ -99,7 +99,7 @@ if (!isset($tabs[$tab])) {
 
         <div class="bg-inverse-surface text-surface rounded-xl p-4">
           <span class="font-label-tag text-label-tag uppercase tracking-wider text-secondary-fixed">Black Tier Concierge</span>
-          <p class="font-body-sm text-body-sm text-surface-dim mt-1">Direct priority line, dedicated acoustic curation and bespoke fitting support across Greater Accra.</p>
+          <p class="font-body-sm text-body-sm text-surface-dim mt-1">Direct priority line, dedicated acoustic curation and bespoke fitting support across Ghana.</p>
           <a class="mt-3 inline-flex items-center gap-1.5 font-label-nav text-label-nav font-bold uppercase tracking-wider text-secondary-fixed hover:underline"
              href="<?= e(url('page.php?slug=contact')) ?>">
             <span class="material-symbols-outlined text-base">chat</span> WhatsApp Concierge
@@ -111,7 +111,7 @@ if (!isset($tabs[$tab])) {
       <div class="flex-1 min-w-0 flex flex-col gap-space-md">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <span class="font-label-tag text-label-tag text-secondary uppercase tracking-[0.18em] block mb-1">Accra Hub Active</span>
+            <span class="font-label-tag text-label-tag text-secondary uppercase tracking-[0.18em] block mb-1">Tarkwa Hub Active</span>
             <h1 class="font-headline-lg text-headline-lg text-on-surface font-bold"><?= e($tabs[$tab][1]) ?></h1>
           </div>
           <span class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1.5">

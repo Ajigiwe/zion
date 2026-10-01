@@ -14,7 +14,7 @@ $artPos  = $artSide === 'right' ? 'lg:left-auto lg:right-0' : 'lg:left-0 lg:righ
 $tagline = (string) setting('site_tagline');
 
 $artSlides  = auth_slider_slides();
-$artDefault = 'Hand-finished luxury intimates and master-grade instruments, curated in Accra for the discerning few.';
+$artDefault = 'Hand-finished luxury intimates and master-grade instruments, curated in Tarkwa for the discerning few.';
 $artCaptions = $artSlides !== [] ? $artSlides : [['image_url' => '', 'caption' => '']];
 $artCount   = count($artSlides);
 $artMulti   = $artCount > 1;

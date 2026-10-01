@@ -42,8 +42,49 @@ if ($dept !== '') {
     $params[] = $dept;
 }
 if ($category !== null) {
-    $where[] = 'products.category_id = ?';
-    $params[] = (int) $category['id'];
+    $allById  = [];
+    $childOf  = [];
+    $parentOf = [];
+    foreach (db_all('SELECT id, parent_id, name, slug FROM categories') as $c) {
+        $cid          = (int) $c['id'];
+        $allById[$cid] = $c;
+        if ($c['parent_id'] !== null) {
+            $pid             = (int) $c['parent_id'];
+            $childOf[$pid][] = $cid;
+            $parentOf[$cid]  = $pid;
+        }
+    }
+    $catIds = [(int) $category['id']];
+    $queue  = $catIds;
+    while ($queue !== []) {
+        $cur = array_pop($queue);
+        foreach ($childOf[$cur] ?? [] as $kid) {
+            $catIds[] = $kid;
+            $queue[]  = $kid;
+        }
+    }
+    $where[] = 'products.category_id IN (' . implode(',', array_fill(0, count($catIds), '?')) . ')';
+    array_push($params, ...$catIds);
+
+    $chain = [];
+    $cur   = $parentOf[(int) $category['id']] ?? null;
+    while ($cur !== null) {
+        array_unshift($chain, $cur);
+        $cur = $parentOf[$cur] ?? null;
+    }
+
+    $chipCats = [];
+    $kids     = $childOf[(int) $category['id']] ?? [];
+    if ($kids !== []) {
+        $ph    = implode(',', array_fill(0, count($kids), '?'));
+        $countBy = [];
+        foreach (db_all("SELECT category_id, COUNT(*) AS c FROM products WHERE is_active = 1 AND category_id IN ($ph) GROUP BY category_id", $kids) as $r) {
+            $countBy[(int) $r['category_id']] = (int) $r['c'];
+        }
+        foreach ($kids as $k) {
+            $chipCats[] = $allById[$k] + ['cnt' => $countBy[$k] ?? 0];
+        }
+    }
 }
 if ($onSale) {
     $where[] = 'products.compare_at_price IS NOT NULL';
@@ -77,7 +118,7 @@ $products = db_all(
 
 $heading = $category !== null
     ? $category['name']
-    : ($dept === 'lingerie' ? 'Lingerie' : ($dept === 'instruments' ? 'Musical Instruments' : 'All Products'));
+    : ($dept === 'lingerie' ? 'Lingerie' : ($dept === 'instruments' ? 'Music, Audio & Church' : 'All Products'));
 $eyebrow = $category !== null
     ? ($category['department'] === 'lingerie' ? 'Exquisite Intimates' : 'Master Sound & Gear')
     : 'The Full Curation';
@@ -86,10 +127,10 @@ set_title($heading . ' | Zion Groups');
 $seoDesc = $category !== null && ($category['description'] ?? '') !== ''
     ? (string) $category['description']
     : ($dept === 'lingerie'
-        ? 'Luxury lingerie in Accra - balconettes, bodysuits, sleepwear and matching sets, shipped discreetly nationwide.'
+        ? 'Luxury lingerie in Ghana - balconettes, bodysuits, sleepwear and matching sets, shipped discreetly nationwide from Tarkwa.'
         : ($dept === 'instruments'
-            ? 'Keyboards, synthesizers, guitars, microphones and studio gear from the Zion Groups showroom in Accra.'
-            : 'Browse every product in the Zion Groups catalogue - lingerie, instruments and audio gear.'));
+            ? 'Keyboards, guitars, microphones, professional audio and church worship equipment from the Zion Groups showroom in Tarkwa, Ghana.'
+            : 'Browse every product in the Zion Groups catalogue - lingerie, instruments, audio gear and church equipment.'));
 set_meta($seoDesc);
 render_head();
 ?>
@@ -101,13 +142,16 @@ render_head();
       <a class="hover:text-primary" href="<?= e(url('index.php')) ?>">Home</a>
       <span class="material-symbols-outlined text-sm">chevron_right</span>
       <a class="hover:text-primary" href="<?= e(url('shop.php')) ?>">Shop</a>
-      <?php if ($dept !== ''): ?>
-        <span class="material-symbols-outlined text-sm">chevron_right</span>
-        <a class="hover:text-primary" href="<?= e(url('shop.php?dept=' . $dept)) ?>"><?= e($dept === 'lingerie' ? 'Lingerie' : 'Instruments') ?></a>
-      <?php endif; ?>
-      <?php if ($category !== null && $category['parent_id'] !== null): ?>
+      <?php if ($category !== null): ?>
+        <?php foreach ($chain as $aid): $a = $allById[$aid]; ?>
+          <span class="material-symbols-outlined text-sm">chevron_right</span>
+          <a class="hover:text-primary" href="<?= e(url('category.php?slug=' . urlencode((string) $a['slug']))) ?>"><?= e((string) $a['name']) ?></a>
+        <?php endforeach; ?>
         <span class="material-symbols-outlined text-sm">chevron_right</span>
         <span class="text-on-surface"><?= e($category['name']) ?></span>
+      <?php elseif ($dept !== ''): ?>
+        <span class="material-symbols-outlined text-sm">chevron_right</span>
+        <a class="hover:text-primary" href="<?= e(url('shop.php?dept=' . $dept)) ?>"><?= e($dept === 'lingerie' ? 'Lingerie' : 'Music & Audio') ?></a>
       <?php endif; ?>
     </nav>
 
@@ -119,6 +163,17 @@ render_head();
 
       <!-- ---------------- grid ---------------- -->
       <div class="lg:flex-1 flex flex-col gap-6 min-w-0">
+        <?php if (!empty($chipCats)): ?>
+          <div class="flex flex-wrap gap-2" aria-label="Subcategories">
+            <?php foreach ($chipCats as $ch): ?>
+              <a href="<?= e(url('category.php?slug=' . urlencode((string) $ch['slug']))) ?>"
+                 class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant bg-surface-container-lowest font-label-nav text-label-nav uppercase tracking-wider text-on-surface hover:border-primary hover:text-primary transition-colors">
+                <?= e((string) $ch['name']) ?>
+                <span class="text-xs font-normal normal-case tracking-normal <?= $ch['cnt'] > 0 ? 'text-on-surface-variant' : 'text-outline' ?>"><?= (int) $ch['cnt'] ?></span>
+              </a>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
         <div class="bg-surface-container-lowest p-4 rounded-xl shadow-xs flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-3">
             <p class="font-body-md text-body-md text-on-surface">

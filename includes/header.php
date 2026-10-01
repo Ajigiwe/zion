@@ -12,6 +12,8 @@ $active = static function (string $key) use ($currentFile, $query): string {
         'shop'        => $currentFile === 'shop.php' && !isset($query['dept']),
         'lingerie'    => $currentFile === 'shop.php' && ($query['dept'] ?? '') === 'lingerie',
         'instruments' => $currentFile === 'shop.php' && ($query['dept'] ?? '') === 'instruments',
+        'church'      => ($currentFile === 'category.php' && ($query['slug'] ?? '') === 'church-worship')
+                         || ($currentFile === 'shop.php' && ($query['cat'] ?? '') === 'church-worship'),
         'deals'       => $currentFile === 'shop.php' && ($query['sale'] ?? '') === '1',
         'cart'        => $currentFile === 'cart.php',
         'account'     => in_array($currentFile, ['account.php', 'orders.php', 'order.php', 'wishlist.php'], true),
@@ -38,7 +40,8 @@ $navLink = static function (string $key, string $href, string $label) use ($acti
     <nav class="hidden xl:flex items-center gap-space-lg">
       <?= $navLink('shop', url('shop.php'), 'Shop') ?>
       <?= $navLink('lingerie', url('shop.php?dept=lingerie'), 'Lingerie') ?>
-      <?= $navLink('instruments', url('shop.php?dept=instruments'), 'Instruments') ?>
+      <?= $navLink('instruments', url('shop.php?dept=instruments'), 'Music & Audio') ?>
+      <?= $navLink('church', url('category.php?slug=church-worship'), 'Church') ?>
       <?= $navLink('shop', url('shop.php?view=collections'), 'Collections') ?>
       <?= $navLink('deals', url('shop.php?sale=1'), 'Deals') ?>
     </nav>
@@ -114,7 +117,8 @@ $navLink = static function (string $key, string $href, string $label) use ($acti
             'home'        => [url('index.php'), 'Home'],
             'shop'        => [url('shop.php'), 'Shop All'],
             'lingerie'    => [url('shop.php?dept=lingerie'), 'Lingerie'],
-            'instruments' => [url('shop.php?dept=instruments'), 'Musical Instruments'],
+            'instruments' => [url('shop.php?dept=instruments'), 'Music & Audio'],
+            'church'      => [url('category.php?slug=church-worship'), 'Church & Worship'],
             'deals'       => [url('shop.php?sale=1'), 'Deals'],
         ] as $key => [$href, $label]): ?>
           <a class="py-2.5 font-label-nav text-label-nav uppercase tracking-wider border-b border-outline-variant/50 transition-colors <?= e($active($key) ?: 'text-on-surface-variant hover:text-primary') ?>"

@@ -3,9 +3,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/product_card.php';
 
-set_title('Express Yourself | Zion Groups of Companies | Lingerie & Instruments, Accra');
+set_title('Express Yourself | Zion Groups of Companies | Lingerie & Instruments, Ghana');
 set_meta(
-    'Zion Groups of Companies - luxury lingerie and professional musical instruments in Accra. '
+    'Zion Groups of Companies - luxury lingerie, professional musical instruments, pro audio and church worship equipment in Tarkwa, Ghana. '
     . 'Discreet nationwide delivery, showroom try-ons and secure Paystack checkout.'
 );
 set_jsonld([
@@ -36,7 +36,7 @@ foreach ($categories as $c) {
     $bySlug[$c['slug']] = $c;
 }
 // Homepage tiles, in the order used by the original design.
-$tileSlugs = ['lingerie', 'guitars', 'keyboards', 'drums', 'microphones', 'audio-gear'];
+$tileSlugs = ['church-worship', 'music-instruments', 'professional-audio', 'lingerie', 'keyboards', 'microphones'];
 $homeCats  = array_values(array_filter(array_map(fn($s) => $bySlug[$s] ?? null, $tileSlugs)));
 $heroLingerie    = img_url((string) ($bySlug['lingerie']['image_url'] ?? ''));
 $heroInstruments = img_url((string) ($bySlug['guitars']['image_url'] ?? ''));

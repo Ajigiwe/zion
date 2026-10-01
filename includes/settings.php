@@ -17,8 +17,8 @@ function settings_defaults(): array
         /* general */
         'site_name'        => 'Zion Groups of Companies',
         'site_tagline'     => 'Style. Sound. You.',
-        'site_description' => 'Zion Groups of Companies - luxury intimate apparel and professional musical instruments, delivered discreetly across Accra, Kumasi and Ghana.',
-        'footer_about'     => "Curating Accra's most sensual luxury intimate apparel alongside master-crafted musical instruments and studio audio gear.",
+        'site_description' => 'Zion Groups of Companies - luxury intimate apparel, professional musical instruments and church worship equipment from Tarkwa, Ghana, delivered discreetly nationwide.',
+        'footer_about'     => 'From Tarkwa, Ghana: sensual luxury intimate apparel, master-crafted musical instruments, professional audio gear and complete church worship setups.',
 
         /* theme */
         'theme_preset'          => 'crimson',
@@ -38,17 +38,17 @@ function settings_defaults(): array
 
         /* contact details */
         'contact_email'     => 'concierge@ziongroups.com.gh',
-        'contact_phone'     => '+233 50 123 4567',
-        'contact_whatsapp'  => '233501234567',
+        'contact_phone'     => '+233 27 543 9830',
+        'contact_whatsapp'  => '233541717773',
         'contact_hours'     => 'Mon - Sat: 9:00 AM - 6:00 PM  |  Sun: 12:00 PM - 5:00 PM',
-        'contact_response'  => 'Our Accra concierge replies within two hours during business hours, seven days a week.',
+        'contact_response'  => 'Our Tarkwa team replies within two hours during business hours, seven days a week.',
 
         /* location */
-        'address_line'    => 'Airport Residential Area, Accra',
-        'address_city'    => 'Greater Accra Region, Ghana',
+        'address_line'    => 'Market Circle & Main Station, Tarkwa',
+        'address_city'    => 'Tarkwa, Western Region, Ghana',
         'address_country' => 'Ghana',
-        'map_lat'         => '5.6037',
-        'map_lng'         => '-0.1780',
+        'map_lat'         => '5.3017',
+        'map_lng'         => '-2.1100',
 
         /* socials */
         'social_instagram' => 'https://www.instagram.com/',

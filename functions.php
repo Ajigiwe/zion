@@ -381,7 +381,7 @@ function shipping_quote(string $region, string $method): array
 {
     $metroRegions = ['Greater Accra Region'];
     if ($method === 'pickup') {
-        return ['pickup', 'Self Pick (Airport Showroom)', 0.00];
+        return ['pickup', 'Self Pick (Tarkwa Showroom)', 0.00];
     }
     if (in_array($region, $metroRegions, true) && $method !== 'regional') {
         return ['metro', 'Accra Express (Same-Day / 24 hrs)', SHIPPING_METRO];
@@ -467,7 +467,7 @@ function set_title(string $title): void
 
 function page_title(): string
 {
-    return $GLOBALS['page_title'] ?? 'Luxury Lingerie & Instruments | Accra, Ghana';
+    return $GLOBALS['page_title'] ?? 'Luxury Lingerie & Instruments | Tarkwa, Ghana';
 }
 
 /* ----------------------------------------------------------- meta / SEO */
