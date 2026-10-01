@@ -619,6 +619,24 @@ function whatsapp_url(string $message = ''): string
     return $href;
 }
 
+/**
+ * WhatsApp enquiry deep link for a product: includes name, price,
+ * the product image and the product page URL in the prefilled message.
+ *
+ * @param array $p product row (name, price, slug, image_url)
+ */
+function product_whatsapp_url(array $p): string
+{
+    $img = absolute_image_url((string) ($p['image_url'] ?? ''));
+    $url = absolute_url('product.php?slug=' . urlencode((string) ($p['slug'] ?? '')));
+    $msg = "Hi Zion Groups, I'd like to enquire about:\n\n"
+        . (string) ($p['name'] ?? '')
+        . ' - ' . price((float) ($p['price'] ?? 0))
+        . ($img !== '' ? "\nImage: " . $img : '')
+        . "\nProduct: " . $url;
+    return whatsapp_url($msg);
+}
+
 function map_embed_url(): string
 {
     $lat = (float) setting('map_lat');

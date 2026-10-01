@@ -485,5 +485,6 @@
 })();
 </script>
 <script src="<?= e(url('assets/ajax.js')) ?>"></script>
+<script src="<?= e(url('assets/share.js')) ?>"></script>
 </body>
 </html>
