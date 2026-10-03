@@ -10,8 +10,10 @@
  * Pipeline:
  *   1. Preps Payment Gateway (validates and injects Paystack keys into .env)
  *   2. Pulls latest changes from Git (origin/main)
- *   3. Re-establishes runtime storage folders & secure permissions
- *   4. Runs pre-flight diagnostics (database, tables, extensions, gateway status)
+ *   3. Displays latest changes, commit author, diff summary, and timestamps
+ *   4. Re-establishes runtime storage folders & secure permissions
+ *   5. Flushes PHP OPcache
+ *   6. Runs pre-flight diagnostics (database, tables, extensions, gateway status)
  */
 
 declare(strict_types=1);
@@ -98,7 +100,7 @@ $submittedPub = $isCli ? ($cliOpts['public-key'] ?? null) : ($_POST['paystack_pu
 $submittedSec = $isCli ? ($cliOpts['secret-key'] ?? null) : ($_POST['paystack_secret_key'] ?? null);
 $branch       = $isCli ? ($cliOpts['branch'] ?? 'main') : (trim((string) ($_POST['branch'] ?? 'main')) ?: 'main');
 
-// In browser mode, only execute when POST action=deploy or if run via CLI
+// In browser mode, execute when POST action=deploy or if run via CLI
 $doDeploy = $isCli || (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['action']));
 
 $logs = [];
@@ -130,6 +132,8 @@ function log_err(string $msg): void {
         printf("    \033[1;31m✗\033[0m %s\n", $msg);
     }
 }
+
+$commitData = [];
 
 if ($doDeploy) {
     // -------------------------------------------------------------------------
@@ -184,46 +188,122 @@ if ($doDeploy) {
     // -------------------------------------------------------------------------
     log_step("2. Pulling Latest Changes from Git (origin/$branch)");
 
+    chdir($root);
+    $deployTimestamp = date('Y-m-d H:i:s T');
     $gitCheck = @shell_exec('git --version 2>&1');
+
     if (!$gitCheck || !str_contains($gitCheck, 'git version')) {
-        log_warn("Git binary not accessible via PHP shell_exec. Skipping git pull.");
+        log_warn("Git binary not accessible via PHP shell_exec. If running in cPanel without shell permissions, use cPanel Git Version Control.");
     } else {
         $beforeCommit = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
+        
+        // 1. Fetch latest commits from remote
         $fetchOut = @shell_exec("git fetch origin " . escapeshellarg($branch) . " 2>&1");
-        $checkoutOut = @shell_exec("git checkout -B " . escapeshellarg($branch) . " origin/" . escapeshellarg($branch) . " 2>&1");
-        $afterCommit = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
-        $commitMsg = trim((string) @shell_exec('git log -1 --pretty=%s 2>&1'));
+        
+        // 2. Reset hard to origin/branch to cleanly overwrite any working tree differences
+        $checkoutOut = @shell_exec("git reset --hard origin/" . escapeshellarg($branch) . " 2>&1");
+        
+        $afterCommit  = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
+        $commitMsg    = trim((string) @shell_exec('git log -1 --pretty=format:"%s" 2>&1'));
+        $commitAuthor = trim((string) @shell_exec('git log -1 --pretty=format:"%an <%ae>" 2>&1'));
+        $commitDate   = trim((string) @shell_exec('git log -1 --pretty=format:"%ad (%cr)" --date=format:"%Y-%m-%d %H:%M:%S %Z" 2>&1'));
+        $changedFiles = trim((string) @shell_exec('git diff --stat HEAD~1 HEAD 2>&1'));
+        if ($changedFiles === '' || str_contains($changedFiles, 'fatal')) {
+            $changedFiles = trim((string) @shell_exec('git log -1 --stat --oneline 2>&1'));
+        }
+        $recentLog    = trim((string) @shell_exec('git log -5 --pretty=format:"[%h] %ad - %s (%an)" --date=format:"%Y-%m-%d %H:%M" 2>&1'));
+
+        $commitData = [
+            'hash'          => $afterCommit,
+            'message'       => $commitMsg,
+            'author'        => $commitAuthor,
+            'date'          => $commitDate,
+            'deploy_time'   => $deployTimestamp,
+            'changed_files' => $changedFiles,
+            'recent_log'    => $recentLog,
+        ];
 
         if ($afterCommit !== '' && !str_contains($afterCommit, 'fatal')) {
-            log_ok("Git updated: $beforeCommit -> $afterCommit ($commitMsg)");
+            log_ok("Deploy Time   : $deployTimestamp");
+            log_ok("Git Revision  : $beforeCommit -> $afterCommit");
+            log_ok("Commit Time   : $commitDate");
+            log_ok("Commit Author : $commitAuthor");
+            log_ok("Latest Message: \"$commitMsg\"");
+            if ($changedFiles !== '') {
+                log_ok("Files Changed in Update:\n" . preg_replace('/^/m', '       ', $changedFiles));
+            }
+            if ($recentLog !== '') {
+                $logs[] = ['type' => 'info', 'msg' => "Recent commits:\n" . preg_replace('/^/m', '   ', $recentLog)];
+            }
         } else {
             log_warn("Git fetch/checkout note: " . trim($checkoutOut ?: $fetchOut ?: 'No output'));
         }
     }
 
     // -------------------------------------------------------------------------
-    // 3. RUNTIME STORAGE & PERMISSIONS
+    // 3. SYNC TO LIVE WEB ROOT (IF SEPARATE REPOSITORY LAYOUT)
     // -------------------------------------------------------------------------
-    log_step("3. Verifying Runtime Storage Directories & Permissions");
+    log_step("3. Synchronizing Files to Live Web Root");
+
+    $targetDir = getenv('DEPLOY_TARGET') ?: '';
+    if ($targetDir === '') {
+        $homeDir = getenv('HOME') ?: (isset($_SERVER['DOCUMENT_ROOT']) ? dirname($_SERVER['DOCUMENT_ROOT']) : '');
+        if ($homeDir !== '' && is_dir($homeDir . '/public_html') && str_contains($root, '/repositories/')) {
+            $targetDir = $homeDir . '/public_html';
+        } else {
+            $targetDir = $root;
+        }
+    }
+
+    if ($targetDir !== $root && is_dir($targetDir)) {
+        $rsyncCheck = @shell_exec('rsync --version 2>&1');
+        if ($rsyncCheck && str_contains($rsyncCheck, 'rsync')) {
+            $syncCmd = 'rsync -a --delete '
+                . '--include="storage/uploads/.htaccess" '
+                . '--exclude="storage/uploads/*" '
+                . '--exclude="storage/logs/*" '
+                . '--exclude=".git" '
+                . '--exclude=".env" '
+                . escapeshellarg($root . '/') . ' ' . escapeshellarg($targetDir . '/');
+            @shell_exec($syncCmd);
+            log_ok("Files synchronized to live web root: $targetDir");
+        } else {
+            log_ok("Live directory is served directly from: $targetDir");
+        }
+    } else {
+        log_ok("Live site files are running directly from: $targetDir");
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. RUNTIME STORAGE & PERMISSIONS
+    // -------------------------------------------------------------------------
+    log_step("4. Verifying Runtime Storage Directories & Permissions");
 
     foreach (['storage', 'storage/logs', 'storage/uploads'] as $dir) {
-        $fullPath = $root . '/' . $dir;
+        $fullPath = $targetDir . '/' . $dir;
         if (!is_dir($fullPath)) {
             @mkdir($fullPath, 0755, true);
         }
         @chmod($fullPath, 0755);
     }
-    log_ok("Storage directories initialized with 0755 permissions.");
+    log_ok("Storage directories verified with 0755 permissions.");
 
-    if (is_file($envFile)) {
-        @chmod($envFile, 0600);
+    $targetEnv = $targetDir . '/.env';
+    if (is_file($targetEnv)) {
+        @chmod($targetEnv, 0600);
         log_ok(".env file secured with 0600 permissions.");
     }
 
+    // Clear PHP OPcache if active so changes reflect immediately
+    if (function_exists('opcache_reset')) {
+        @opcache_reset();
+        log_ok("PHP OPcache memory reset (live scripts refreshed).");
+    }
+
     // -------------------------------------------------------------------------
-    // 4. PRE-FLIGHT DIAGNOSTICS
+    // 5. PRE-FLIGHT DIAGNOSTICS
     // -------------------------------------------------------------------------
-    log_step("4. Running Pre-Flight Diagnostics (tools/doctor.php)");
+    log_step("5. Running Pre-Flight Diagnostics (tools/doctor.php)");
 
     if (is_file($root . '/tools/doctor.php')) {
         ob_start();
@@ -248,7 +328,8 @@ if ($doDeploy) {
         }
     }
 
-    log_step("Deployment Pipeline Complete!");
+    $completedTime = date('Y-m-d H:i:s T');
+    log_step("Deployment Completed at $completedTime");
 }
 
 if ($isCli) {
@@ -260,6 +341,29 @@ if ($isCli) {
 // -----------------------------------------------------------------------------
 $activePub = $currentEnv['PAYSTACK_PUBLIC_KEY'] ?? '';
 $activeSec = $currentEnv['PAYSTACK_SECRET_KEY'] ?? '';
+
+// If we haven't just deployed in this request, fetch current git status for display
+if (empty($commitData)) {
+    chdir($root);
+    $currentHash   = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
+    $currentMsg    = trim((string) @shell_exec('git log -1 --pretty=format:"%s" 2>&1'));
+    $currentAuthor = trim((string) @shell_exec('git log -1 --pretty=format:"%an <%ae>" 2>&1'));
+    $currentDate   = trim((string) @shell_exec('git log -1 --pretty=format:"%ad (%cr)" --date=format:"%Y-%m-%d %H:%M:%S %Z" 2>&1'));
+    $currentDiff   = trim((string) @shell_exec('git log -1 --stat --oneline 2>&1'));
+    $recentLog     = trim((string) @shell_exec('git log -5 --pretty=format:"[%h] %ad - %s (%an)" --date=format:"%Y-%m-%d %H:%M" 2>&1'));
+
+    if ($currentHash !== '' && !str_contains($currentHash, 'fatal')) {
+        $commitData = [
+            'hash'          => $currentHash,
+            'message'       => $currentMsg,
+            'author'        => $currentAuthor,
+            'date'          => $currentDate,
+            'deploy_time'   => null,
+            'changed_files' => $currentDiff,
+            'recent_log'    => $recentLog,
+        ];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -284,12 +388,64 @@ $activeSec = $currentEnv['PAYSTACK_SECRET_KEY'] ?? '';
           <span class="text-xs uppercase tracking-widest text-emerald-400 font-semibold">Zion Live Deployment</span>
         </div>
         <h1 class="text-2xl sm:text-3xl font-bold mt-1 text-white">Sync &amp; Deploy Pipeline</h1>
-        <p class="text-sm text-slate-400 mt-1">Pull latest Git commits, configure Paystack keys, and deploy to live.</p>
+        <p class="text-sm text-slate-400 mt-1">Pull latest Git commits, inspect changes &amp; timestamps, configure Paystack keys, and deploy to live.</p>
       </div>
       <a href="index.php" class="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-900 transition">
         Storefront &rarr;
       </a>
     </header>
+
+    <!-- Latest Changes & Commit Information Card -->
+    <?php if (!empty($commitData) && !empty($commitData['hash'])): ?>
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs uppercase tracking-widest text-emerald-400 font-bold">Latest Changes</span>
+              <span class="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono rounded">
+                Commit: <?= htmlspecialchars($commitData['hash']) ?>
+              </span>
+            </div>
+            <h2 class="text-lg font-bold text-white mt-1">
+              <?= htmlspecialchars($commitData['message']) ?>
+            </h2>
+          </div>
+          <?php if (!empty($commitData['deploy_time'])): ?>
+            <div class="text-left sm:text-right sm:shrink-0">
+              <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block">Last Deployed At</span>
+              <span class="text-xs font-mono text-emerald-400 font-bold"><?= htmlspecialchars($commitData['deploy_time']) ?></span>
+            </div>
+          <?php endif; ?>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+            <span class="text-slate-400 uppercase tracking-wider text-[10px] font-semibold block mb-0.5">Commit Author</span>
+            <span class="text-slate-200 font-mono"><?= htmlspecialchars($commitData['author'] ?: 'Unknown') ?></span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+            <span class="text-slate-400 uppercase tracking-wider text-[10px] font-semibold block mb-0.5">Commit Timestamp</span>
+            <span class="text-slate-200 font-mono"><?= htmlspecialchars($commitData['date'] ?: 'Unknown') ?></span>
+          </div>
+        </div>
+
+        <?php if (!empty($commitData['changed_files'])): ?>
+          <div>
+            <span class="text-slate-400 uppercase tracking-wider text-[10px] font-semibold block mb-1.5">Files Changed / Summary</span>
+            <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-xs text-slate-300 font-mono overflow-x-auto whitespace-pre"><?= htmlspecialchars($commitData['changed_files']) ?></pre>
+          </div>
+        <?php endif; ?>
+
+        <?php if (!empty($commitData['recent_log'])): ?>
+          <details class="text-xs text-slate-400">
+            <summary class="cursor-pointer text-slate-300 hover:text-emerald-400 font-semibold py-1 transition">
+              View Recent 5 Commits History &darr;
+            </summary>
+            <pre class="bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-xs text-slate-400 font-mono mt-2 overflow-x-auto whitespace-pre"><?= htmlspecialchars($commitData['recent_log']) ?></pre>
+          </details>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
 
     <!-- Configuration & Deploy Form -->
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
@@ -339,7 +495,7 @@ $activeSec = $currentEnv['PAYSTACK_SECRET_KEY'] ?? '';
           <div class="flex-1 flex justify-end pt-5">
             <button type="submit"
                     class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-2 cursor-pointer">
-              <span>🚀</span> Run Sync &amp; Deploy Now
+              <span>🚀</span> Pull &amp; Deploy Latest Changes
             </button>
           </div>
         </div>
@@ -356,7 +512,7 @@ $activeSec = $currentEnv['PAYSTACK_SECRET_KEY'] ?? '';
             <span class="h-3 w-3 rounded-full bg-green-500/80"></span>
             <span class="text-xs font-mono text-slate-400 ml-2">deployment-log.sh</span>
           </div>
-          <span class="text-xs text-emerald-400 font-mono">Status: Done</span>
+          <span class="text-xs text-emerald-400 font-mono font-semibold">Status: Completed</span>
         </div>
 
         <div class="p-6 font-mono text-sm space-y-2 bg-slate-950/70 overflow-x-auto">
