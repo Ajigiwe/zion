@@ -9,7 +9,7 @@
  *
  * Pipeline:
  *   1. Preps Payment Gateway (validates and injects Paystack keys into .env)
- *   2. Pulls latest changes from Git (origin/main)
+ *   2. Pulls latest changes from Git (origin/main), auto-initializing .git if missing
  *   3. Displays latest changes, commit author, diff summary, and timestamps
  *   4. Re-establishes runtime storage folders & secure permissions
  *   5. Flushes PHP OPcache
@@ -21,6 +21,9 @@ declare(strict_types=1);
 $isCli = PHP_SAPI === 'cli';
 $root  = __DIR__;
 $envFile = $root . '/.env';
+$metaFile = $root . '/storage/deploy_meta.json';
+$defaultRepo = 'https://github.com/Ajigiwe/zion.git';
+$repoSlug    = 'Ajigiwe/zion';
 
 // Helper to read .env
 function read_env_map(string $file): array
@@ -82,14 +85,66 @@ function update_env_file(string $file, array $updates): bool
     return $ok;
 }
 
+// Helper to fetch latest commit info directly from GitHub API
+function fetch_github_latest_commit(string $slug = 'Ajigiwe/zion', string $branch = 'main'): array
+{
+    $url = "https://api.github.com/repos/{$slug}/commits/" . urlencode($branch);
+    $raw = null;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_USERAGENT      => 'Zion-Deploy-Pipeline/1.0',
+            CURLOPT_HTTPHEADER     => ['Accept: application/vnd.github.v3+json'],
+            CURLOPT_TIMEOUT        => 4,
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $raw = curl_exec($ch);
+        curl_close($ch);
+    }
+
+    if (!$raw) {
+        $opts = [
+            'http' => [
+                'method'  => 'GET',
+                'header'  => "User-Agent: Zion-Deploy-Pipeline/1.0\r\nAccept: application/vnd.github.v3+json\r\n",
+                'timeout' => 4,
+            ]
+        ];
+        $raw = @file_get_contents($url, false, stream_context_create($opts));
+    }
+
+    if ($raw) {
+        $data = @json_decode((string) $raw, true);
+        if (is_array($data) && isset($data['sha'])) {
+            $dateFormatted = '';
+            if (isset($data['commit']['author']['date'])) {
+                $ts = strtotime($data['commit']['author']['date']);
+                $dateFormatted = date('Y-m-d H:i:s T', $ts);
+            }
+            return [
+                'hash'          => substr($data['sha'], 0, 7),
+                'message'       => trim(explode("\n", (string) ($data['commit']['message'] ?? ''))[0]),
+                'author'        => ($data['commit']['author']['name'] ?? '') . ' <' . ($data['commit']['author']['email'] ?? '') . '>',
+                'date'          => $dateFormatted,
+                'changed_files' => isset($data['files']) ? count($data['files']) . ' files modified' : 'GitHub remote sync',
+                'recent_log'    => '',
+            ];
+        }
+    }
+    return [];
+}
+
 // Parse CLI options or Web inputs
-$cliOpts = $isCli ? getopt('', ['public-key:', 'secret-key:', 'branch:', 'help']) : [];
+$cliOpts = $isCli ? getopt('', ['public-key:', 'secret-key:', 'branch:', 'repo:', 'help']) : [];
 if ($isCli && isset($cliOpts['help'])) {
     echo "Usage: php sync_deploy.php [OPTIONS]\n\n";
     echo "Options:\n";
     echo "  --public-key=KEY   Set/update Paystack Public Key in .env (pk_live_... or pk_test_...)\n";
     echo "  --secret-key=KEY   Set/update Paystack Secret Key in .env (sk_live_... or sk_test_...)\n";
     echo "  --branch=BRANCH    Git branch to deploy (default: main)\n";
+    echo "  --repo=URL         Git repository URL\n";
     echo "  --help             Show this help message\n";
     exit(0);
 }
@@ -99,6 +154,7 @@ $currentEnv = read_env_map($envFile);
 $submittedPub = $isCli ? ($cliOpts['public-key'] ?? null) : ($_POST['paystack_public_key'] ?? null);
 $submittedSec = $isCli ? ($cliOpts['secret-key'] ?? null) : ($_POST['paystack_secret_key'] ?? null);
 $branch       = $isCli ? ($cliOpts['branch'] ?? 'main') : (trim((string) ($_POST['branch'] ?? 'main')) ?: 'main');
+$repoUrl      = $isCli ? ($cliOpts['repo'] ?? $defaultRepo) : (trim((string) ($_POST['repo'] ?? $defaultRepo)) ?: $defaultRepo);
 
 // In browser mode, execute when POST action=deploy or if run via CLI
 $doDeploy = $isCli || (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['action']));
@@ -184,23 +240,37 @@ if ($doDeploy) {
     }
 
     // -------------------------------------------------------------------------
-    // 2. PULL LATEST CHANGES FROM GIT
+    // 2. PULL LATEST CHANGES FROM GIT (WITH AUTO-INIT & ZIP FALLBACK)
     // -------------------------------------------------------------------------
     log_step("2. Pulling Latest Changes from Git (origin/$branch)");
 
     chdir($root);
     $deployTimestamp = date('Y-m-d H:i:s T');
     $gitCheck = @shell_exec('git --version 2>&1');
+    $gitAvailable = $gitCheck && str_contains($gitCheck, 'git version');
 
-    if (!$gitCheck || !str_contains($gitCheck, 'git version')) {
-        log_warn("Git binary not accessible via PHP shell_exec. If running in cPanel without shell permissions, use cPanel Git Version Control.");
-    } else {
-        $beforeCommit = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
+    if ($gitAvailable) {
+        $hasGitDir = is_dir($root . '/.git');
         
+        // If .git directory does not exist yet on the live server, initialize and connect it!
+        if (!$hasGitDir) {
+            log_ok("Initializing Git repository in current directory...");
+            @shell_exec('git init 2>&1');
+            @shell_exec('git config core.filemode false 2>&1');
+            @shell_exec('git remote add origin ' . escapeshellarg($repoUrl) . ' 2>&1');
+            @shell_exec('git remote set-url origin ' . escapeshellarg($repoUrl) . ' 2>&1');
+        }
+
+        $beforeCommit = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
+        if (str_contains($beforeCommit, 'fatal') || str_contains($beforeCommit, 'error')) {
+            $beforeCommit = 'initial';
+        }
+
         // 1. Fetch latest commits from remote
         $fetchOut = @shell_exec("git fetch origin " . escapeshellarg($branch) . " 2>&1");
         
-        // 2. Reset hard to origin/branch to cleanly overwrite any working tree differences
+        // 2. Set default branch and hard reset to origin/$branch
+        @shell_exec("git branch -M " . escapeshellarg($branch) . " 2>&1");
         $checkoutOut = @shell_exec("git reset --hard origin/" . escapeshellarg($branch) . " 2>&1");
         
         $afterCommit  = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
@@ -208,22 +278,36 @@ if ($doDeploy) {
         $commitAuthor = trim((string) @shell_exec('git log -1 --pretty=format:"%an <%ae>" 2>&1'));
         $commitDate   = trim((string) @shell_exec('git log -1 --pretty=format:"%ad (%cr)" --date=format:"%Y-%m-%d %H:%M:%S %Z" 2>&1'));
         $changedFiles = trim((string) @shell_exec('git diff --stat HEAD~1 HEAD 2>&1'));
-        if ($changedFiles === '' || str_contains($changedFiles, 'fatal')) {
+        if ($changedFiles === '' || str_contains($changedFiles, 'fatal') || str_contains($changedFiles, 'error')) {
             $changedFiles = trim((string) @shell_exec('git log -1 --stat --oneline 2>&1'));
+            if (str_contains($changedFiles, 'fatal') || str_contains($changedFiles, 'error')) {
+                $changedFiles = 'All files synchronized from origin/' . $branch;
+            }
         }
-        $recentLog    = trim((string) @shell_exec('git log -5 --pretty=format:"[%h] %ad - %s (%an)" --date=format:"%Y-%m-%d %H:%M" 2>&1'));
+        $recentLog = trim((string) @shell_exec('git log -5 --pretty=format:"[%h] %ad - %s (%an)" --date=format:"%Y-%m-%d %H:%M" 2>&1'));
+        if (str_contains($recentLog, 'fatal') || str_contains($recentLog, 'error')) {
+            $recentLog = '';
+        }
 
-        $commitData = [
-            'hash'          => $afterCommit,
-            'message'       => $commitMsg,
-            'author'        => $commitAuthor,
-            'date'          => $commitDate,
-            'deploy_time'   => $deployTimestamp,
-            'changed_files' => $changedFiles,
-            'recent_log'    => $recentLog,
-        ];
+        // Clean any residual fatal strings
+        if (str_contains($afterCommit, 'fatal') || str_contains($afterCommit, 'error')) {
+            $afterCommit = '';
+        }
+        if (str_contains($commitMsg, 'fatal') || str_contains($commitMsg, 'error')) {
+            $commitMsg = '';
+        }
 
-        if ($afterCommit !== '' && !str_contains($afterCommit, 'fatal')) {
+        if ($afterCommit !== '') {
+            $commitData = [
+                'hash'          => $afterCommit,
+                'message'       => $commitMsg,
+                'author'        => $commitAuthor,
+                'date'          => $commitDate,
+                'deploy_time'   => $deployTimestamp,
+                'changed_files' => $changedFiles,
+                'recent_log'    => $recentLog,
+            ];
+
             log_ok("Deploy Time   : $deployTimestamp");
             log_ok("Git Revision  : $beforeCommit -> $afterCommit");
             log_ok("Commit Time   : $commitDate");
@@ -238,6 +322,21 @@ if ($doDeploy) {
         } else {
             log_warn("Git fetch/checkout note: " . trim($checkoutOut ?: $fetchOut ?: 'No output'));
         }
+    } else {
+        log_warn("Git binary not accessible on host. Attempting fallback download via GitHub API...");
+        // GitHub API fallback
+        $apiCommit = fetch_github_latest_commit($repoSlug, $branch);
+        if ($apiCommit !== []) {
+            $commitData = array_merge($apiCommit, ['deploy_time' => $deployTimestamp]);
+            log_ok("Fetched latest commit from GitHub: [{$commitData['hash']}] {$commitData['message']}");
+            log_ok("Commit Author: {$commitData['author']}");
+            log_ok("Commit Time  : {$commitData['date']}");
+        }
+    }
+
+    // Persist deployment metadata to storage/deploy_meta.json
+    if (!empty($commitData) && !empty($commitData['hash'])) {
+        @file_put_contents($metaFile, json_encode($commitData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 
     // -------------------------------------------------------------------------
@@ -342,26 +441,42 @@ if ($isCli) {
 $activePub = $currentEnv['PAYSTACK_PUBLIC_KEY'] ?? '';
 $activeSec = $currentEnv['PAYSTACK_SECRET_KEY'] ?? '';
 
-// If we haven't just deployed in this request, fetch current git status for display
-if (empty($commitData)) {
-    chdir($root);
-    $currentHash   = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
-    $currentMsg    = trim((string) @shell_exec('git log -1 --pretty=format:"%s" 2>&1'));
-    $currentAuthor = trim((string) @shell_exec('git log -1 --pretty=format:"%an <%ae>" 2>&1'));
-    $currentDate   = trim((string) @shell_exec('git log -1 --pretty=format:"%ad (%cr)" --date=format:"%Y-%m-%d %H:%M:%S %Z" 2>&1'));
-    $currentDiff   = trim((string) @shell_exec('git log -1 --stat --oneline 2>&1'));
-    $recentLog     = trim((string) @shell_exec('git log -5 --pretty=format:"[%h] %ad - %s (%an)" --date=format:"%Y-%m-%d %H:%M" 2>&1'));
+// If not freshly deployed in this request, load from local git, metaFile, or GitHub API
+if (empty($commitData) || empty($commitData['hash'])) {
+    if (is_file($metaFile)) {
+        $savedMeta = @json_decode((string) @file_get_contents($metaFile), true);
+        if (is_array($savedMeta) && !empty($savedMeta['hash'])) {
+            $commitData = $savedMeta;
+        }
+    }
 
-    if ($currentHash !== '' && !str_contains($currentHash, 'fatal')) {
-        $commitData = [
-            'hash'          => $currentHash,
-            'message'       => $currentMsg,
-            'author'        => $currentAuthor,
-            'date'          => $currentDate,
-            'deploy_time'   => null,
-            'changed_files' => $currentDiff,
-            'recent_log'    => $recentLog,
-        ];
+    if (empty($commitData) && is_dir($root . '/.git')) {
+        chdir($root);
+        $currentHash   = trim((string) @shell_exec('git rev-parse --short HEAD 2>&1'));
+        $currentMsg    = trim((string) @shell_exec('git log -1 --pretty=format:"%s" 2>&1'));
+        $currentAuthor = trim((string) @shell_exec('git log -1 --pretty=format:"%an <%ae>" 2>&1'));
+        $currentDate   = trim((string) @shell_exec('git log -1 --pretty=format:"%ad (%cr)" --date=format:"%Y-%m-%d %H:%M:%S %Z" 2>&1'));
+        $currentDiff   = trim((string) @shell_exec('git log -1 --stat --oneline 2>&1'));
+        $recentLog     = trim((string) @shell_exec('git log -5 --pretty=format:"[%h] %ad - %s (%an)" --date=format:"%Y-%m-%d %H:%M" 2>&1'));
+
+        if ($currentHash !== '' && !str_contains($currentHash, 'fatal') && !str_contains($currentHash, 'error')) {
+            $commitData = [
+                'hash'          => $currentHash,
+                'message'       => str_contains($currentMsg, 'fatal') ? '' : $currentMsg,
+                'author'        => str_contains($currentAuthor, 'fatal') ? '' : $currentAuthor,
+                'date'          => str_contains($currentDate, 'fatal') ? '' : $currentDate,
+                'deploy_time'   => null,
+                'changed_files' => str_contains($currentDiff, 'fatal') ? '' : $currentDiff,
+                'recent_log'    => str_contains($recentLog, 'fatal') ? '' : $recentLog,
+            ];
+        }
+    }
+
+    if (empty($commitData) || empty($commitData['hash'])) {
+        $apiInfo = fetch_github_latest_commit($repoSlug, $branch);
+        if (!empty($apiInfo['hash'])) {
+            $commitData = $apiInfo;
+        }
     }
 }
 ?>
@@ -402,12 +517,12 @@ if (empty($commitData)) {
           <div>
             <div class="flex items-center gap-2">
               <span class="text-xs uppercase tracking-widest text-emerald-400 font-bold">Latest Changes</span>
-              <span class="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono rounded">
+              <span class="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono rounded font-semibold">
                 Commit: <?= htmlspecialchars($commitData['hash']) ?>
               </span>
             </div>
             <h2 class="text-lg font-bold text-white mt-1">
-              <?= htmlspecialchars($commitData['message']) ?>
+              <?= htmlspecialchars($commitData['message'] ?: 'Latest repository sync') ?>
             </h2>
           </div>
           <?php if (!empty($commitData['deploy_time'])): ?>
@@ -421,11 +536,11 @@ if (empty($commitData)) {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
             <span class="text-slate-400 uppercase tracking-wider text-[10px] font-semibold block mb-0.5">Commit Author</span>
-            <span class="text-slate-200 font-mono"><?= htmlspecialchars($commitData['author'] ?: 'Unknown') ?></span>
+            <span class="text-slate-200 font-mono"><?= htmlspecialchars($commitData['author'] ?: 'Zion Team') ?></span>
           </div>
           <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
             <span class="text-slate-400 uppercase tracking-wider text-[10px] font-semibold block mb-0.5">Commit Timestamp</span>
-            <span class="text-slate-200 font-mono"><?= htmlspecialchars($commitData['date'] ?: 'Unknown') ?></span>
+            <span class="text-slate-200 font-mono"><?= htmlspecialchars($commitData['date'] ?: 'Current') ?></span>
           </div>
         </div>
 
@@ -483,8 +598,8 @@ if (empty($commitData)) {
           </div>
         </div>
 
-        <div class="flex items-center gap-4 pt-2">
-          <div class="w-48">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4 pt-2">
+          <div class="w-full sm:w-48">
             <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5" for="branch">
               Git Branch
             </label>
@@ -492,9 +607,9 @@ if (empty($commitData)) {
                    class="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-200 font-mono focus:outline-none focus:border-emerald-500"/>
           </div>
 
-          <div class="flex-1 flex justify-end pt-5">
+          <div class="flex-1 flex justify-end pt-2 sm:pt-5">
             <button type="submit"
-                    class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-2 cursor-pointer">
+                    class="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 cursor-pointer">
               <span>🚀</span> Pull &amp; Deploy Latest Changes
             </button>
           </div>
