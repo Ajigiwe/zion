@@ -2,6 +2,13 @@
 declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 
+// Handle order submission directly on checkout.php
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    csrf_check();
+    require __DIR__ . '/checkout_handler.php';
+    exit;
+}
+
 $cart = cart_totals();
 if ($cart['rows'] === []) {
     flash_set('info', 'Your bag is empty.');
@@ -76,7 +83,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
       </div>
     <?php endif; ?>
 
-    <form method="post" action="<?= e(url('actions.php')) ?>" class="grid grid-cols-1 lg:grid-cols-3 gap-space-lg items-start">
+    <form id="checkoutForm" method="post" action="<?= e(url('checkout.php')) ?>" class="grid grid-cols-1 lg:grid-cols-3 gap-space-lg items-start">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="place_order"/>
       <input type="hidden" name="return" value="<?= e(url('checkout.php')) ?>"/>
@@ -369,7 +376,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
   });
 
   // Paystack Popup (Inline) Form Interceptor
-  var form = document.querySelector('form[action*="actions.php"]');
+  var form = document.getElementById('checkoutForm') || document.querySelector('form');
   if (form) {
     form.addEventListener('submit', function (e) {
       var channel = (form.querySelector('[name="payment_channel"]:checked') || {}).value || 'paystack';
