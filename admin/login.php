@@ -55,7 +55,7 @@ require __DIR__ . '/../includes/head.php';
       <label class="flex flex-col gap-1">
         <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Staff email</span>
         <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
-               type="email" name="email" required value="<?= e($_POST['email'] ?? 'admin@ziongroups.com.gh') ?>" autocomplete="username"/>
+               type="email" name="email" required value="<?= e($_POST['email'] ?? '') ?>" autocomplete="username"/>
       </label>
       <div class="flex flex-col gap-1">
         <label for="admin-password" class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Password</label>

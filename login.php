@@ -84,14 +84,6 @@ render_head();
           New to Zion Groups? <a class="text-primary font-semibold underline" href="<?= e(url('register.php')) ?>">Create an account</a>
         </p>
       </div>
-
-      <div class="rounded-xl border border-outline-variant bg-surface-container-low p-4">
-        <p class="font-label-tag text-label-tag uppercase tracking-wider text-secondary mb-1">Demo credentials</p>
-        <p class="font-body-sm text-body-sm text-on-surface-variant">
-          Customer &mdash; <span class="font-semibold text-on-surface">kwame.mensah@ziongroups.com.gh</span> / <span class="font-semibold text-on-surface">Customer123!</span><br/>
-          Admin &mdash; <span class="font-semibold text-on-surface">admin@ziongroups.com.gh</span> / <span class="font-semibold text-on-surface">Admin123!</span>
-        </p>
-      </div>
     </div>
   </div>
 </main>
