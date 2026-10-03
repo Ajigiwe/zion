@@ -141,4 +141,22 @@
       }
     });
   }, false);
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-toggle-password]') : null;
+    if (!btn) { return; }
+    e.preventDefault();
+    var wrapper = btn.closest('.relative') || btn.parentElement;
+    var input = wrapper ? wrapper.querySelector('input') : null;
+    if (!input) { return; }
+    var isPassword = input.getAttribute('type') === 'password';
+    input.setAttribute('type', isPassword ? 'text' : 'password');
+    btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+    btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
+    var icon = btn.querySelector('.material-symbols-outlined');
+    if (icon) {
+      icon.textContent = isPassword ? 'visibility_off' : 'visibility';
+    }
+  }, false);
 })();
+
