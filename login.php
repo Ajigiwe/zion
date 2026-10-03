@@ -65,17 +65,17 @@ render_head();
             <input class="h-11 px-3 bg-surface-container-lowest border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
                    type="email" name="email" required value="<?= e($_POST['email'] ?? '') ?>" autocomplete="email"/>
           </label>
-          <label class="flex flex-col gap-1">
-            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Password</span>
+          <div class="flex flex-col gap-1">
+            <label for="login-password" class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Password</label>
             <div class="relative flex items-center">
-              <input class="h-11 w-full pl-3 pr-10 bg-surface-container-lowest border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+              <input id="login-password" class="h-11 w-full pl-3 pr-10 bg-surface-container-lowest border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
                      type="password" name="password" required autocomplete="current-password"/>
               <button type="button" class="absolute right-0 top-0 bottom-0 px-3 flex items-center text-on-surface-variant hover:text-on-surface focus:outline-none focus-visible:text-primary transition-colors cursor-pointer"
-                      data-toggle-password aria-label="Show password" title="Toggle password visibility">
+                      onclick="togglePasswordVisibility(this)" data-toggle-password aria-label="Show password" title="Toggle password visibility">
                 <span class="material-symbols-outlined text-xl select-none">visibility</span>
               </button>
             </div>
-          </label>
+          </div>
           <button class="mt-2 w-full py-3.5 bg-primary-container text-on-primary font-label-nav text-label-nav font-bold uppercase tracking-widest rounded-lg shadow-md hover:bg-primary transition-colors"
                   type="submit">Sign In</button>
         </form>
@@ -95,5 +95,21 @@ render_head();
     </div>
   </div>
 </main>
+<script>
+function togglePasswordVisibility(btn) {
+  if (!btn) return;
+  var wrapper = btn.closest('.relative') || btn.parentElement;
+  var input = wrapper ? wrapper.querySelector('input') : null;
+  if (!input) return;
+  var isPassword = input.type === 'password';
+  input.type = isPassword ? 'text' : 'password';
+  btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+  btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
+  var icon = btn.querySelector('.material-symbols-outlined');
+  if (icon) {
+    icon.textContent = isPassword ? 'visibility_off' : 'visibility';
+  }
+}
+</script>
 <script src="<?= e(url('assets/auth-slider.js')) ?>"></script>
 <?php render_foot(); ?>

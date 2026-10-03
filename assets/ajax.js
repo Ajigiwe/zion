@@ -149,8 +149,8 @@
     var wrapper = btn.closest('.relative') || btn.parentElement;
     var input = wrapper ? wrapper.querySelector('input') : null;
     if (!input) { return; }
-    var isPassword = input.getAttribute('type') === 'password';
-    input.setAttribute('type', isPassword ? 'text' : 'password');
+    var isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
     btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
     btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
     var icon = btn.querySelector('.material-symbols-outlined');
