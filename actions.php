@@ -23,6 +23,9 @@ $isAjax = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xm
 
 function json_out(array $payload): never
 {
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;

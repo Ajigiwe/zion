@@ -182,14 +182,25 @@ try {
 if ($useLivePaystack) {
     $u = current_user();
     $payEmail = $email !== '' ? $email : (($u['email'] ?? '') ?: ('customer_' . preg_replace('/\D/', '', $phone) . '@ziongroups.com.gh'));
+    $pubKey = paystack_public_key();
+
+    if ($pubKey === '') {
+        if ($isAjax) {
+            json_out(['ok' => false, 'message' => 'Paystack Public Key is missing in .env or settings.']);
+        }
+        flash_set('error', 'Paystack Public Key is missing in .env or settings.');
+        redirect_back(url('checkout.php'));
+    }
+
     $_SESSION['pending_paystack_order'] = $orderNo;
+    $callbackUrl = full_url('paystack_callback.php');
 
     // Return JSON for Paystack Popup (Inline)
     if ($isAjax) {
         json_out([
             'ok'            => true,
             'paystack'      => true,
-            'key'           => paystack_public_key(),
+            'key'           => $pubKey,
             'email'         => $payEmail,
             'amount'        => (int) round($total * 100), // GHS in pesewas
             'currency'      => 'GHS',
@@ -197,7 +208,7 @@ if ($useLivePaystack) {
             'order_no'      => $orderNo,
             'customer_name' => $name,
             'phone'         => $phone,
-            'callback_url'  => APP_URL . url('paystack_callback.php'),
+            'callback_url'  => $callbackUrl,
         ]);
     }
 
@@ -207,7 +218,7 @@ if ($useLivePaystack) {
         'amount'       => (int) round($total * 100), // GHS in pesewas
         'currency'     => 'GHS',
         'reference'    => $orderNo,
-        'callback_url' => APP_URL . url('paystack_callback.php'),
+        'callback_url' => $callbackUrl,
         'metadata'     => [
             'order_no'      => $orderNo,
             'customer_name' => $name,

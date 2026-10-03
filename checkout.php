@@ -393,7 +393,17 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
             'Accept': 'application/json'
           }
         })
-        .then(function (res) { return res.json(); })
+        .then(function (res) {
+          return res.text().then(function (text) {
+            try {
+              return JSON.parse(text);
+            } catch (parseErr) {
+              console.warn('Raw response from server:', text);
+              var cleanMsg = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+              throw new Error(cleanMsg || 'Server returned an invalid response.');
+            }
+          });
+        })
         .then(function (data) {
           if (!data.ok) {
             alert(data.message || 'Could not initialize order. Please check all fields.');
@@ -437,7 +447,9 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
           console.error('Checkout error:', err);
           submitBtn.disabled = false;
           submitBtn.innerHTML = originalBtnHtml;
-          alert('A network error occurred. Please try again or switch payment method.');
+          var msg = (err && err.message) ? err.message : 'A network error occurred. Please try again or switch payment method.';
+          if (msg.length > 250) msg = msg.substring(0, 250) + '...';
+          alert(msg);
         });
       }
     });

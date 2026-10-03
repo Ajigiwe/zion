@@ -113,11 +113,29 @@ function csrf_field(): string
     return '<input type="hidden" name="csrf" value="' . e(csrf_token()) . '">';
 }
 
+function full_url(string $path = ''): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443)
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+        ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    return $scheme . '://' . $host . url($path);
+}
+
 function csrf_check(): void
 {
     $sent = $_POST['csrf'] ?? '';
     if (!is_string($sent) || !hash_equals(csrf_token(), $sent)) {
         http_response_code(419);
+        $isAjax = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+            || str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+            || (!empty($_POST['ajax']) && (string) $_POST['ajax'] === '1');
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'message' => 'Your security session has expired. Please refresh the page and try again.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
         exit('Invalid or expired form token. Please go back and try again.');
     }
 }
