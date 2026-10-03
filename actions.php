@@ -77,21 +77,22 @@ function cart_payload(): array
         ];
     }
 
-    return [
-        'count' => cart_count(),
-        'summary' => [
-            'subtotal'    => price($cart['subtotal']),
-            'voucher'     => $promo !== null ? (string) $promo['code'] : '',
-            'discount'    => price($discount),
-            'has_discount'=> $discount > 0,
-            'shipping'    => $cart['shipping'] == 0 ? 'FREE' : price($cart['shipping']),
-            'total'       => price(max(0.0, $cart['subtotal'] - $discount + $cart['shipping'])),
-            'gap'         => price(max(0.0, FREE_SHIPPING_THRESHOLD - $cart['subtotal'])),
-            'free_ship'   => $cart['subtotal'] >= FREE_SHIPPING_THRESHOLD,
-        ],
-        'lines' => $lines,
-        'promo_html' => promo_block_html($promo, $discount),
-    ];
+            $freeThresh = (float) setting('free_shipping_threshold', (string) FREE_SHIPPING_THRESHOLD);
+            return [
+                'count' => cart_count(),
+                'summary' => [
+                    'subtotal'    => price($cart['subtotal']),
+                    'voucher'     => $promo !== null ? (string) $promo['code'] : '',
+                    'discount'    => price($discount),
+                    'has_discount'=> $discount > 0,
+                    'shipping'    => $cart['shipping'] == 0 ? 'FREE' : price($cart['shipping']),
+                    'total'       => price(max(0.0, $cart['subtotal'] - $discount + $cart['shipping'])),
+                    'gap'         => price(max(0.0, $freeThresh - $cart['subtotal'])),
+                    'free_ship'   => $cart['subtotal'] >= $freeThresh,
+                ],
+                'lines' => $lines,
+                'promo_html' => promo_block_html($promo, $discount),
+            ];
 }
 
 switch ($action) {

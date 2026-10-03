@@ -157,10 +157,32 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
               </p>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <?php
+                $metroFee = (float) setting('shipping_metro_fee', (string) SHIPPING_METRO);
+                $regionalFee = (float) setting('shipping_regional_fee', (string) SHIPPING_REGIONAL);
+                $pickupFee = (float) setting('shipping_pickup_fee', '0.00');
+
                 $methods = [
-                    ['metro', 'Fastest', 'Accra Express', 'Same-Day / 24 hrs', 'FREE'],
-                    ['regional', 'Inter-City', 'Regional Road', 'Kumasi / Takoradi', price(SHIPPING_REGIONAL)],
-                    ['pickup', 'Self Pick', setting('address_line'), 'Ready in 2 Hours', 'FREE'],
+                    [
+                        'metro',
+                        setting('shipping_metro_tag', 'Fastest'),
+                        setting('shipping_metro_title', 'Accra Express'),
+                        setting('shipping_metro_desc', 'Same-Day / 24 hrs'),
+                        $metroFee <= 0 ? 'FREE' : price($metroFee),
+                    ],
+                    [
+                        'regional',
+                        setting('shipping_regional_tag', 'Inter-City'),
+                        setting('shipping_regional_title', 'Regional Road'),
+                        setting('shipping_regional_desc', 'Kumasi / Takoradi'),
+                        $regionalFee <= 0 ? 'FREE' : price($regionalFee),
+                    ],
+                    [
+                        'pickup',
+                        setting('shipping_pickup_tag', 'Self Pick'),
+                        setting('shipping_pickup_title', setting('address_line')),
+                        setting('shipping_pickup_desc', 'Ready in 2 Hours'),
+                        $pickupFee <= 0 ? 'FREE' : price($pickupFee),
+                    ],
                 ];
                 foreach ($methods as $i => [$val, $tag, $title, $sub, $fee]): ?>
                   <label class="relative flex flex-col gap-0.5 p-3 pr-9 border rounded-xl cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-colors <?= $i === 0 ? 'border-primary bg-primary/5' : 'border-outline-variant' ?>">
@@ -175,10 +197,10 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
             </div>
 
             <label class="flex items-start gap-2.5 bg-surface-container-low rounded-lg p-3 cursor-pointer">
-              <input type="checkbox" name="discreet_pack" value="1" checked class="accent-primary mt-0.5"/>
+              <input type="checkbox" name="discreet_pack" value="1" <?= setting('discreet_packaging_default', '1') === '1' ? 'checked' : '' ?> class="accent-primary mt-0.5"/>
               <span class="font-body-sm text-body-sm text-on-surface-variant">
-                <strong class="text-on-surface">Discreet Packaging Guaranteed (checked by default).</strong>
-                Intimate apparel ships in unmarked, plain luxury charcoal boxes with no reference to lingerie on the courier airway bill.
+                <strong class="text-on-surface"><?= e(setting('discreet_packaging_title', 'Discreet Packaging Guaranteed (checked by default).')) ?></strong>
+                <?= e(setting('discreet_packaging_desc', 'Intimate apparel ships in unmarked, plain luxury charcoal boxes with no reference to lingerie on the courier airway bill.')) ?>
               </span>
             </label>
           </div>
@@ -302,9 +324,10 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
 (function () {
   var subtotal = <?= json_encode((float) $cart['subtotal']) ?>;
   var discount = <?= json_encode((float) $discount) ?>;
-  var metro = <?= json_encode((float) SHIPPING_METRO) ?>;
-  var regional = <?= json_encode((float) SHIPPING_REGIONAL) ?>;
-  var freeAt = <?= json_encode((float) FREE_SHIPPING_THRESHOLD) ?>;
+  var metro = <?= json_encode((float) setting('shipping_metro_fee', (string) SHIPPING_METRO)) ?>;
+  var regional = <?= json_encode((float) setting('shipping_regional_fee', (string) SHIPPING_REGIONAL)) ?>;
+  var pickup = <?= json_encode((float) setting('shipping_pickup_fee', '0.00')) ?>;
+  var freeAt = <?= json_encode((float) setting('free_shipping_threshold', (string) FREE_SHIPPING_THRESHOLD)) ?>;
   var currency = <?= json_encode(CURRENCY) ?>;
 
   function fmt(v) {
@@ -317,7 +340,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
   function refresh() {
     var region = document.querySelector('[name="region"]').value;
     var method = (document.querySelector('[name="shipping_method"]:checked') || {}).value || 'metro';
-    var fee = method === 'pickup' ? 0 : (method === 'regional' || region.indexOf('Greater Accra') === -1 ? regional : metro);
+    var fee = method === 'pickup' ? pickup : (method === 'regional' || region.indexOf('Greater Accra') === -1 ? regional : metro);
     if (method === 'metro' && region.indexOf('Greater Accra') === -1) fee = regional;
     if (method !== 'pickup' && subtotal >= freeAt && region.indexOf('Greater Accra') !== -1) fee = metro;
 

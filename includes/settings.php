@@ -84,6 +84,29 @@ function settings_defaults(): array
         /* sign-in slider (login / register art panel) */
         'auth_slider_slides'   => '[]',
         'auth_slider_autoplay' => '5',
+
+        /* dispatch & shipping methods */
+        'shipping_metro_tag'       => 'Fastest',
+        'shipping_metro_title'     => 'Accra Express',
+        'shipping_metro_desc'      => 'Same-Day / 24 hrs',
+        'shipping_metro_fee'       => '0.00',
+
+        'shipping_regional_tag'    => 'Inter-City',
+        'shipping_regional_title'  => 'Regional Road',
+        'shipping_regional_desc'   => 'Kumasi / Takoradi',
+        'shipping_regional_fee'    => '45.00',
+
+        'shipping_pickup_tag'      => 'Self Pick',
+        'shipping_pickup_title'    => 'Market Circle & Main Station, Tarkwa',
+        'shipping_pickup_desc'     => 'Ready in 2 Hours',
+        'shipping_pickup_fee'      => '0.00',
+
+        'free_shipping_threshold'  => '1000.00',
+
+        /* discreet packaging */
+        'discreet_packaging_title'   => 'Discreet Packaging Guaranteed (checked by default).',
+        'discreet_packaging_desc'    => 'Intimate apparel ships in unmarked, plain luxury charcoal boxes with no reference to lingerie on the courier airway bill.',
+        'discreet_packaging_default' => '1',
     ];
 }
 

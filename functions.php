@@ -250,9 +250,12 @@ function cart_totals(): array
     foreach ($rows as $r) {
         $subtotal += (float) $r['unit_price'] * (int) $r['qty'];
     }
-    $shipping = $subtotal === 0.0 || $subtotal >= FREE_SHIPPING_THRESHOLD
-        ? SHIPPING_METRO
-        : SHIPPING_REGIONAL;
+    $freeThresh = (float) setting('free_shipping_threshold', (string) FREE_SHIPPING_THRESHOLD);
+    $metroFee   = (float) setting('shipping_metro_fee', (string) SHIPPING_METRO);
+    $regFee     = (float) setting('shipping_regional_fee', (string) SHIPPING_REGIONAL);
+    $shipping   = $subtotal === 0.0 || $subtotal >= $freeThresh
+        ? $metroFee
+        : $regFee;
     return ['rows' => $rows, 'subtotal' => $subtotal, 'shipping' => $shipping, 'total' => $subtotal + $shipping];
 }
 
@@ -381,12 +384,21 @@ function shipping_quote(string $region, string $method): array
 {
     $metroRegions = ['Greater Accra Region'];
     if ($method === 'pickup') {
-        return ['pickup', 'Self Pick (Tarkwa Showroom)', 0.00];
+        $loc  = setting('shipping_pickup_title', setting('address_line'));
+        $desc = setting('shipping_pickup_desc', 'Ready in 2 Hours');
+        $fee  = (float) setting('shipping_pickup_fee', '0.00');
+        return ['pickup', 'Self Pick (' . $loc . ' - ' . $desc . ')', $fee];
     }
     if (in_array($region, $metroRegions, true) && $method !== 'regional') {
-        return ['metro', 'Accra Express (Same-Day / 24 hrs)', SHIPPING_METRO];
+        $title = setting('shipping_metro_title', 'Accra Express');
+        $desc  = setting('shipping_metro_desc', 'Same-Day / 24 hrs');
+        $fee   = (float) setting('shipping_metro_fee', (string) SHIPPING_METRO);
+        return ['metro', $title . ' (' . $desc . ')', $fee];
     }
-    return ['regional', 'Regional Road (Kumasi / Takoradi)', SHIPPING_REGIONAL];
+    $title = setting('shipping_regional_title', 'Regional Road');
+    $desc  = setting('shipping_regional_desc', 'Kumasi / Takoradi');
+    $fee   = (float) setting('shipping_regional_fee', (string) SHIPPING_REGIONAL);
+    return ['regional', $title . ' (' . $desc . ')', $fee];
 }
 
 /* ------------------------------------------------------------- reviews */

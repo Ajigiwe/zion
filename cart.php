@@ -155,9 +155,10 @@ render_head();
               </div>
             </dl>
 
-            <p class="mt-3 font-body-sm text-body-sm text-on-surface-variant bg-surface-container rounded-lg px-3 py-2 <?= $cart['subtotal'] >= FREE_SHIPPING_THRESHOLD ? 'hidden' : '' ?>"
+            <?php $freeThresh = (float) setting('free_shipping_threshold', (string) FREE_SHIPPING_THRESHOLD); ?>
+            <p class="mt-3 font-body-sm text-body-sm text-on-surface-variant bg-surface-container rounded-lg px-3 py-2 <?= $cart['subtotal'] >= $freeThresh ? 'hidden' : '' ?>"
                data-freehint>
-              Add <span data-sum="gap"><?= e(price(FREE_SHIPPING_THRESHOLD - $cart['subtotal'])) ?></span> more for complimentary Accra &amp; Kumasi express delivery.
+              Add <span data-sum="gap"><?= e(price(max(0.0, $freeThresh - $cart['subtotal']))) ?></span> more for complimentary express delivery.
             </p>
 
             <a class="mt-4 w-full inline-flex items-center justify-center gap-2 py-3.5 bg-primary-container text-on-primary font-label-nav text-label-nav font-bold uppercase tracking-widest rounded-lg shadow-md hover:bg-primary transition-colors"

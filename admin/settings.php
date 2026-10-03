@@ -18,6 +18,11 @@ const TEXT_KEYS = [
     'address_line', 'address_city', 'address_country', 'map_lat', 'map_lng',
     'social_instagram', 'social_tiktok', 'social_facebook', 'social_youtube',
     'grid_columns', 'card_ratio', 'home_featured',
+    'shipping_metro_tag', 'shipping_metro_title', 'shipping_metro_desc', 'shipping_metro_fee',
+    'shipping_regional_tag', 'shipping_regional_title', 'shipping_regional_desc', 'shipping_regional_fee',
+    'shipping_pickup_tag', 'shipping_pickup_title', 'shipping_pickup_desc', 'shipping_pickup_fee',
+    'free_shipping_threshold',
+    'discreet_packaging_title', 'discreet_packaging_desc', 'discreet_packaging_default',
 ];
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
@@ -53,6 +58,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         }
         $save[$key] = $value;
     }
+
+    $save['discreet_packaging_default'] = isset($_POST['discreet_packaging_default']) && $_POST['discreet_packaging_default'] === '1' ? '1' : '0';
 
     foreach (['theme_primary', 'theme_secondary', 'theme_background', 'theme_surface', 'theme_on_surface', 'theme_inverse_surface'] as $key) {
         if ($preset !== '' && isset(theme_presets()[$preset])) {
@@ -421,6 +428,7 @@ admin_head('Settings', 'settings');
   <div class="flex flex-wrap gap-2 mb-space-md" id="sectionTabs">
     <?php foreach ([
         'general'   => 'General',
+        'shipping'  => 'Dispatch & Shipping',
         'hero'      => 'Hero slider',
         'authslider' => 'Sign-in slider',
         'theme'     => 'Theme',
@@ -705,6 +713,138 @@ admin_head('Settings', 'settings');
             <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none" name="social_<?= e($key) ?>" value="<?= $v('social_' . $key) ?>" placeholder="https://www.<?= e($key) ?>/"/>
           </label>
         <?php endforeach; ?>
+      </div>
+    </section>
+
+    <!-- DISPATCH & SHIPPING -->
+    <section id="shipping" class="set-section bg-surface-container-lowest rounded-xl shadow-xs p-space-md">
+      <div class="flex items-center gap-3 mb-space-sm">
+        <span class="material-symbols-outlined text-secondary text-2xl">local_shipping</span>
+        <div>
+          <h2 class="font-headline-sm text-headline-sm text-on-surface font-bold">Dispatch &amp; Delivery Methods</h2>
+          <p class="font-body-sm text-body-sm text-on-surface-variant">Customize the delivery methods, badge tags, transit timelines, fees, and packaging notice shown at checkout.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-space-md">
+        <!-- 1. Express / Metro Method -->
+        <div class="rounded-xl border border-outline-variant p-4 bg-surface-container flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span class="font-label-tag text-label-tag uppercase tracking-wider text-secondary font-bold">Method 1 (Metro / Express)</span>
+            <span class="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">Greater Accra</span>
+          </div>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Badge Tag</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_metro_tag" value="<?= $v('shipping_metro_tag') ?>" placeholder="FASTEST"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Method Name</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_metro_title" value="<?= $v('shipping_metro_title') ?>" placeholder="Accra Express"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Timeline / Subtitle</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_metro_desc" value="<?= $v('shipping_metro_desc') ?>" placeholder="Same-Day / 24 hrs"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Fee (GH&#8373;)</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none font-mono"
+                   type="number" step="0.01" min="0" name="shipping_metro_fee" value="<?= $v('shipping_metro_fee') ?>" placeholder="0.00"/>
+            <span class="font-body-sm text-[11px] text-on-surface-variant">Enter 0 for FREE delivery</span>
+          </label>
+        </div>
+
+        <!-- 2. Regional / Inter-City Method -->
+        <div class="rounded-xl border border-outline-variant p-4 bg-surface-container flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span class="font-label-tag text-label-tag uppercase tracking-wider text-secondary font-bold">Method 2 (Regional Road)</span>
+            <span class="px-2 py-0.5 rounded bg-secondary-fixed text-on-secondary-fixed text-xs font-semibold">Other Regions</span>
+          </div>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Badge Tag</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_regional_tag" value="<?= $v('shipping_regional_tag') ?>" placeholder="INTER-CITY"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Method Name</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_regional_title" value="<?= $v('shipping_regional_title') ?>" placeholder="Regional Road"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Timeline / Subtitle</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_regional_desc" value="<?= $v('shipping_regional_desc') ?>" placeholder="Kumasi / Takoradi"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Fee (GH&#8373;)</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none font-mono"
+                   type="number" step="0.01" min="0" name="shipping_regional_fee" value="<?= $v('shipping_regional_fee') ?>" placeholder="45.00"/>
+            <span class="font-body-sm text-[11px] text-on-surface-variant">Applied to destinations outside Greater Accra</span>
+          </label>
+        </div>
+
+        <!-- 3. Self Pick / Store Showroom Method -->
+        <div class="rounded-xl border border-outline-variant p-4 bg-surface-container flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span class="font-label-tag text-label-tag uppercase tracking-wider text-secondary font-bold">Method 3 (Self Pick)</span>
+            <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 text-xs font-semibold">Store Pickup</span>
+          </div>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Badge Tag</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_pickup_tag" value="<?= $v('shipping_pickup_tag') ?>" placeholder="SELF PICK"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Pickup Location Name</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_pickup_title" value="<?= $v('shipping_pickup_title') ?>" placeholder="Market Circle & Main Station, Tarkwa"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Timeline / Subtitle</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                   name="shipping_pickup_desc" value="<?= $v('shipping_pickup_desc') ?>" placeholder="Ready in 2 Hours"/>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Fee (GH&#8373;)</span>
+            <input class="h-10 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none font-mono"
+                   type="number" step="0.01" min="0" name="shipping_pickup_fee" value="<?= $v('shipping_pickup_fee') ?>" placeholder="0.00"/>
+            <span class="font-body-sm text-[11px] text-on-surface-variant">Enter 0 for free customer pickup</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="border-t border-outline-variant pt-4 grid grid-cols-1 md:grid-cols-2 gap-space-sm">
+        <!-- Free shipping threshold -->
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Free Shipping Threshold (GH&#8373;)</span>
+          <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none font-mono"
+                 type="number" step="0.01" min="0" name="free_shipping_threshold" value="<?= $v('free_shipping_threshold') ?>" placeholder="1000.00"/>
+          <span class="font-body-sm text-body-sm text-on-surface-variant">Orders with subtotal at or above this amount receive free shipping automatically.</span>
+        </label>
+
+        <!-- Discreet packaging default checkbox -->
+        <div class="flex flex-col gap-2 justify-center bg-surface-container rounded-xl p-3 border border-outline-variant/60">
+          <label class="flex items-center gap-2.5 cursor-pointer">
+            <input class="accent-primary w-4 h-4" type="checkbox" name="discreet_packaging_default" value="1" <?= setting('discreet_packaging_default', '1') === '1' ? 'checked' : '' ?>/>
+            <span class="font-label-nav text-label-nav text-on-surface font-semibold uppercase tracking-wider">Check Discreet Packaging by default at checkout</span>
+          </label>
+          <span class="font-body-sm text-body-sm text-on-surface-variant">When checked, the packaging guarantee box is pre-selected for customers.</span>
+        </div>
+
+        <!-- Discreet packaging text options -->
+        <label class="flex flex-col gap-1 md:col-span-2">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Discreet Packaging Heading</span>
+          <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                 name="discreet_packaging_title" value="<?= $v('discreet_packaging_title') ?>" placeholder="Discreet Packaging Guaranteed (checked by default)."/>
+        </label>
+
+        <label class="flex flex-col gap-1 md:col-span-2">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Discreet Packaging Description Text</span>
+          <textarea class="min-h-16 p-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                    name="discreet_packaging_desc"><?= $v('discreet_packaging_desc') ?></textarea>
+        </label>
       </div>
     </section>
 
