@@ -107,6 +107,10 @@ function settings_defaults(): array
         'discreet_packaging_title'   => 'Discreet Packaging Guaranteed (checked by default).',
         'discreet_packaging_desc'    => 'Intimate apparel ships in unmarked, plain luxury charcoal boxes with no reference to lingerie on the courier airway bill.',
         'discreet_packaging_default' => '1',
+
+        /* payment gateway */
+        'paystack_public_key' => '',
+        'paystack_secret_key' => '',
     ];
 }
 

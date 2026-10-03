@@ -23,6 +23,7 @@ const TEXT_KEYS = [
     'shipping_pickup_tag', 'shipping_pickup_title', 'shipping_pickup_desc', 'shipping_pickup_fee',
     'free_shipping_threshold',
     'discreet_packaging_title', 'discreet_packaging_desc', 'discreet_packaging_default',
+    'paystack_public_key', 'paystack_secret_key',
 ];
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
@@ -845,6 +846,33 @@ admin_head('Settings', 'settings');
           <textarea class="min-h-16 p-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
                     name="discreet_packaging_desc"><?= $v('discreet_packaging_desc') ?></textarea>
         </label>
+      </div>
+
+      <!-- Paystack Payment Gateway -->
+      <div class="border-t border-outline-variant mt-6 pt-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-xl">💳</span>
+          <div>
+            <h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Paystack Payment Gateway</h3>
+            <p class="font-body-sm text-body-sm text-on-surface-variant">Live or Sandbox API keys for card, mobile money (MTN MoMo, Telecel, AT Money), and bank payments.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-space-sm bg-surface-container rounded-xl p-4 border border-outline-variant/60">
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Paystack Public Key</span>
+            <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none font-mono"
+                   name="paystack_public_key" value="<?= $v('paystack_public_key') ?>" placeholder="<?= e(PAYSTACK_PUBLIC_KEY ? PAYSTACK_PUBLIC_KEY : 'pk_live_... or pk_test_...') ?>"/>
+            <span class="font-body-sm text-[11px] text-on-surface-variant"><?= PAYSTACK_PUBLIC_KEY ? 'Configured in .env (' . substr(PAYSTACK_PUBLIC_KEY, 0, 8) . '...)' : 'Leave blank if set in .env' ?></span>
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Paystack Secret Key</span>
+            <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none font-mono"
+                   type="password" name="paystack_secret_key" value="<?= $v('paystack_secret_key') ?>" placeholder="<?= e(PAYSTACK_SECRET_KEY ? '••••••••••••••••' : 'sk_live_... or sk_test_...') ?>"/>
+            <span class="font-body-sm text-[11px] text-on-surface-variant"><?= PAYSTACK_SECRET_KEY ? 'Configured in .env' : 'Leave blank if set in .env' ?></span>
+          </label>
+        </div>
       </div>
     </section>
 

@@ -66,14 +66,15 @@ if (!empty($_SESSION['promo_code'])) {
 
 $total = max(0.0, $subtotal - $discount + $shipFee);
 
-$paid = $channel !== 'cod';
+$useLivePaystack = ($channel === 'paystack') && is_paystack_configured();
+$paid = ($channel !== 'cod') && !$useLivePaystack;
 $status = $paid ? 'confirmed' : 'pending';
 
 try {
-    $orderNo = db_tx(function (PDO $pdo) use (
+    $orderInfo = db_tx(function (PDO $pdo) use (
         $lines, $name, $email, $phone, $region, $city, $address,
         $shipCode, $shipLabel, $shipFee, $subtotal, $discount, $promoCode, $total,
-        $channel, $notes, $discreet, $status, $paid
+        $channel, $notes, $discreet, $status, $paid, $useLivePaystack
     ): array {
         $orderNo = next_order_no();
         $u = current_user();
@@ -102,7 +103,7 @@ try {
             $promoCode,
             $total,
             $channel,
-            $paid ? strtoupper($channel) . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)) : null,
+            $paid ? strtoupper($channel) . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)) : ($useLivePaystack ? $orderNo : null),
             $paid ? 'paid' : 'pending',
             $status,
             $discreet,
@@ -136,9 +137,11 @@ try {
         }
 
         $ev = $pdo->prepare('INSERT INTO order_events (order_id, status, note) VALUES (?,?,?)');
-        $ev->execute([$orderId, 'pending', 'Order received']);
+        $ev->execute([$orderId, 'pending', 'Order created']);
         if ($paid) {
             $ev->execute([$orderId, 'confirmed', 'Payment authorised - ' . $shipLabel]);
+        } elseif ($useLivePaystack) {
+            $ev->execute([$orderId, 'pending', 'Awaiting Paystack payment authorization']);
         }
 
         return [$orderNo, $orderId];
@@ -149,10 +152,44 @@ try {
     redirect_back(url('checkout.php'));
 }
 
-[$orderNo, $orderId] = $orderNo;
+[$orderNo, $orderId] = $orderInfo;
 
+// If live Paystack is configured, call Paystack API and redirect to the secure payment page
+if ($useLivePaystack) {
+    $u = current_user();
+    $payEmail = $email !== '' ? $email : (($u['email'] ?? '') ?: ('customer_' . preg_replace('/\D/', '', $phone) . '@ziongroups.com.gh'));
+
+    $init = paystack_api_request('transaction/initialize', 'POST', [
+        'email'        => $payEmail,
+        'amount'       => (int) round($total * 100), // GHS in pesewas
+        'currency'     => 'GHS',
+        'reference'    => $orderNo,
+        'callback_url' => APP_URL . url('paystack_callback.php'),
+        'metadata'     => [
+            'order_no'      => $orderNo,
+            'customer_name' => $name,
+            'phone'         => $phone,
+        ],
+    ]);
+
+    if ($init['ok'] && !empty($init['data']['authorization_url'])) {
+        $_SESSION['pending_paystack_order'] = $orderNo;
+        header('Location: ' . $init['data']['authorization_url']);
+        exit;
+    }
+
+    // Paystack API initialization failed - notify customer and retain cart
+    error_log('Paystack initialization error: ' . ($init['message'] ?? 'Unknown error'));
+    flash_set('error', 'Payment gateway error: ' . ($init['message'] ?? 'Could not initialize Paystack checkout. Please try again.'));
+    redirect_back(url('checkout.php'));
+}
+
+// Simulated / Cash on Delivery flow
 cart_clear();
 unset($_SESSION['promo_code']);
+if (!isset($_SESSION['my_orders']) || !is_array($_SESSION['my_orders'])) {
+    $_SESSION['my_orders'] = [];
+}
 $_SESSION['my_orders'][] = $orderNo;
 
 // Low-stock watch - at most one alert per hour, only when something is at/below threshold.

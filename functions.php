@@ -544,3 +544,109 @@ function breadcrumbs(array $crumbs): void
 {
     $GLOBALS['breadcrumbs'] = $crumbs;
 }
+
+/* ----------------------------------------------------------- paystack */
+
+function paystack_public_key(): string
+{
+    $envKey = defined('PAYSTACK_PUBLIC_KEY') ? (string) PAYSTACK_PUBLIC_KEY : '';
+    if ($envKey !== '') {
+        return $envKey;
+    }
+    return (string) setting('paystack_public_key', '');
+}
+
+function paystack_secret_key(): string
+{
+    $envKey = defined('PAYSTACK_SECRET_KEY') ? (string) PAYSTACK_SECRET_KEY : '';
+    if ($envKey !== '') {
+        return $envKey;
+    }
+    return (string) setting('paystack_secret_key', '');
+}
+
+function is_paystack_configured(): bool
+{
+    $sec = paystack_secret_key();
+    return $sec !== '' && (str_starts_with($sec, 'sk_live_') || str_starts_with($sec, 'sk_test_') || strlen($sec) >= 10);
+}
+
+/**
+ * Execute a Paystack API request (Initialize, Verify, etc.).
+ *
+ * @param string $endpoint e.g. 'transaction/initialize' or 'transaction/verify/REF'
+ * @param string $method   'GET' or 'POST'
+ * @param array  $data     Payload for POST
+ * @return array{ok: bool, message?: string, data?: array}
+ */
+function paystack_api_request(string $endpoint, string $method = 'GET', array $data = []): array
+{
+    $secretKey = paystack_secret_key();
+    if ($secretKey === '') {
+        return ['ok' => false, 'message' => 'Paystack secret key is missing.'];
+    }
+
+    $url = 'https://api.paystack.co/' . ltrim($endpoint, '/');
+    $headers = [
+        'Authorization: Bearer ' . $secretKey,
+        'Content-Type: application/json',
+        'Cache-Control: no-cache',
+    ];
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+
+        if (strtoupper($method) === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        }
+
+        $res = curl_exec($ch);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($res === false || $err) {
+            return ['ok' => false, 'message' => 'Network error connecting to Paystack: ' . $err];
+        }
+
+        $json = json_decode((string) $res, true);
+        if (!is_array($json)) {
+            return ['ok' => false, 'message' => 'Invalid response from Paystack API.'];
+        }
+
+        if (empty($json['status'])) {
+            return ['ok' => false, 'message' => $json['message'] ?? 'Paystack transaction could not be initialized.'];
+        }
+
+        return ['ok' => true, 'data' => $json['data'] ?? []];
+    }
+
+    // Stream fallback
+    $opts = [
+        'http' => [
+            'method'        => strtoupper($method),
+            'header'        => implode("\r\n", $headers),
+            'timeout'       => 30,
+            'ignore_errors' => true,
+        ],
+    ];
+    if (strtoupper($method) === 'POST') {
+        $opts['http']['content'] = json_encode($data);
+    }
+    $ctx = stream_context_create($opts);
+    $res = @file_get_contents($url, false, $ctx);
+    if ($res === false) {
+        return ['ok' => false, 'message' => 'Could not connect to Paystack API.'];
+    }
+    $json = json_decode($res, true);
+    if (!is_array($json) || empty($json['status'])) {
+        return ['ok' => false, 'message' => $json['message'] ?? 'Paystack error'];
+    }
+    return ['ok' => true, 'data' => $json['data'] ?? []];
+}
+
