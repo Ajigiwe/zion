@@ -82,19 +82,22 @@ cp .env.example .env        # then edit: DB_*, APP_URL=https://yourdomain,
 git add -A && git commit -m "..." && git push
 
 # on the server (cPanel Terminal or SSH)
-cd ~/public_html && bash deploy.sh
+cd ~/public_html && bash sync_deploy.sh
 ```
 
-`deploy.sh`:
+`sync_deploy.sh`:
 
-- `git fetch` + hard-reset to `origin/main` (prints `old -> new` commit),
-- re-creates `storage/logs` + `storage/uploads` with 755,
-- creates `.env` from `.env.example` **only if missing** (never overwrites),
-- runs `php tools/doctor.php` and aborts if any check FAILs,
-- warns while `APP_ENV`/`APP_DEBUG` are still development values.
+- **Preps Payment Gateway**: validates and prompts/injects `PAYSTACK_PUBLIC_KEY` & `PAYSTACK_SECRET_KEY` into `.env` before live activation (supports `pk_live_...` / `sk_live_...` or test keys).
+- `git fetch` + fast-forward to `origin/main` (prints `old -> new` commit),
+- syncs code cleanly into the live web root (`rsync`),
+- re-creates `storage/logs` + `storage/uploads` with 755 permissions,
+- creates/maintains `.env` with 600 permissions,
+- runs `php tools/doctor.php` pre-flight diagnostics (verifying DB, tables, permissions, and Paystack status).
 
-It never touches `.env`, `storage/uploads/*` or `storage/logs/*` - those are
-gitignored, which is exactly why re-deploys cannot wipe your uploads or secrets.
+You can also pass Paystack keys directly in command line:
+```bash
+PAYSTACK_PUBLIC_KEY=pk_live_xxx PAYSTACK_SECRET_KEY=sk_live_xxx bash sync_deploy.sh
+```
 
 **Rules of the road**
 

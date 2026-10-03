@@ -61,6 +61,19 @@ if ($get('APP_URL') === '') {
     chk('APP_URL', 'PASS', 'set');
 }
 
+/* ----------------------------------------------------------- payments ---- */
+$payPub = $get('PAYSTACK_PUBLIC_KEY', '');
+$paySec = $get('PAYSTACK_SECRET_KEY', '');
+if ($payPub !== '' || $paySec !== '') {
+    $isLive = str_starts_with($payPub, 'pk_live_') || str_starts_with($paySec, 'sk_live_');
+    $isTest = str_starts_with($payPub, 'pk_test_') || str_starts_with($paySec, 'sk_test_');
+    $status = ($isLive || $isTest) ? 'PASS' : 'WARN';
+    $mode = $isLive ? 'LIVE mode (production keys configured)' : ($isTest ? 'TEST mode (test keys configured)' : 'custom keys configured');
+    chk('Paystack Gateway', $status, $mode);
+} else {
+    chk('Paystack Gateway', 'WARN', 'keys not set in .env (gateway in demo / simulation mode)');
+}
+
 /* -------------------------------------------------------------- PHP ------ */
 chk('PHP version', PHP_VERSION >= '8.2.0' ? 'PASS' : 'FAIL', PHP_VERSION . ' (need 8.2+)');
 chk('PHP SAPI', 'PASS', php_sapi_name() === false ? 'unknown' : (string) php_sapi_name());
