@@ -87,9 +87,27 @@ if (!empty($_SESSION['promo_code'])) {
 
 $total = max(0.0, $subtotal - $discount + $shipFee);
 
+$submittedRef = trim((string) ($_POST['paystack_ref'] ?? ''));
 $useLivePaystack = ($channel === 'paystack') && is_paystack_configured();
-$paid = ($channel !== 'cod') && !$useLivePaystack;
+
+// If Paystack reference was returned from the inline popup, verify it with Paystack API
+$isVerifiedPaystack = false;
+if ($useLivePaystack && $submittedRef !== '') {
+    $verify = paystack_api_request('transaction/verify/' . urlencode($submittedRef));
+    if (!$verify['ok'] || ($verify['data']['status'] ?? '') !== 'success') {
+        $msg = $verify['data']['gateway_response'] ?? $verify['message'] ?? 'Payment authorization failed.';
+        if ($isAjax) {
+            json_out(['ok' => false, 'message' => 'Payment verification failed: ' . $msg]);
+        }
+        flash_set('error', 'Payment verification failed: ' . $msg);
+        redirect_back(url('checkout.php'));
+    }
+    $isVerifiedPaystack = true;
+}
+
+$paid = ($channel !== 'cod') && ($isVerifiedPaystack || !$useLivePaystack);
 $status = $paid ? 'confirmed' : 'pending';
+$finalPayRef = $isVerifiedPaystack ? $submittedRef : ($paid ? strtoupper($channel) . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)) : null);
 
 try {
     $orderInfo = db_tx(function (PDO $pdo) use (
@@ -124,7 +142,7 @@ try {
             $promoCode,
             $total,
             $channel,
-            $paid ? strtoupper($channel) . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)) : ($useLivePaystack ? $orderNo : null),
+            $finalPayRef,
             $paid ? 'paid' : 'pending',
             $status,
             $discreet,
@@ -178,8 +196,8 @@ try {
 
 [$orderNo, $orderId] = $orderInfo;
 
-// If live Paystack is configured, handle popup or hosted redirect
-if ($useLivePaystack) {
+// If live Paystack is configured AND payment was not already verified via inline popup, redirect to hosted page
+if ($useLivePaystack && !$isVerifiedPaystack) {
     $u = current_user();
     $payEmail = $email !== '' ? $email : (($u['email'] ?? '') ?: ('customer_' . preg_replace('/\D/', '', $phone) . '@ziongroups.com.gh'));
     $pubKey = paystack_public_key();
@@ -194,23 +212,6 @@ if ($useLivePaystack) {
 
     $_SESSION['pending_paystack_order'] = $orderNo;
     $callbackUrl = full_url('paystack_callback.php');
-
-    // Return JSON for Paystack Popup (Inline)
-    if ($isAjax) {
-        json_out([
-            'ok'            => true,
-            'paystack'      => true,
-            'key'           => $pubKey,
-            'email'         => $payEmail,
-            'amount'        => (int) round($total * 100), // GHS in pesewas
-            'currency'      => 'GHS',
-            'reference'     => $orderNo,
-            'order_no'      => $orderNo,
-            'customer_name' => $name,
-            'phone'         => $phone,
-            'callback_url'  => $callbackUrl,
-        ]);
-    }
 
     // Standard Non-AJAX fallback (Redirect)
     $init = paystack_api_request('transaction/initialize', 'POST', [

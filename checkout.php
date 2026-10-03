@@ -87,6 +87,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="place_order"/>
       <input type="hidden" name="return" value="<?= e(url('checkout.php')) ?>"/>
+      <input type="hidden" id="paystackRefInput" name="paystack_ref" value=""/>
 
       <div class="lg:col-span-2 flex flex-col gap-space-lg">
 
@@ -337,6 +338,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
   var freeAt = <?= json_encode((float) setting('free_shipping_threshold', (string) FREE_SHIPPING_THRESHOLD)) ?>;
   var currency = <?= json_encode(CURRENCY) ?>;
   var isPaystackLive = <?= json_encode(is_paystack_configured()) ?>;
+  var paystackPublicKey = <?= json_encode(paystack_public_key()) ?>;
 
   function fmt(v) {
     return currency + ' ' + v.toLocaleString('en-US', {
@@ -345,13 +347,17 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
     });
   }
 
-  function refresh() {
+  function getFee() {
     var region = document.querySelector('[name="region"]').value;
     var method = (document.querySelector('[name="shipping_method"]:checked') || {}).value || 'metro';
     var fee = method === 'pickup' ? pickup : (method === 'regional' || region.indexOf('Greater Accra') === -1 ? regional : metro);
     if (method === 'metro' && region.indexOf('Greater Accra') === -1) fee = regional;
     if (method !== 'pickup' && subtotal >= freeAt && region.indexOf('Greater Accra') !== -1) fee = metro;
+    return fee;
+  }
 
+  function refresh() {
+    var fee = getFee();
     var total = Math.max(0, subtotal - discount) + fee;
     document.getElementById('shippingSummary').textContent = fee === 0 ? 'FREE' : fmt(fee);
     document.getElementById('orderTotal').textContent = fmt(total);
@@ -375,89 +381,74 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
     });
   });
 
-  // Paystack Popup (Inline) Form Interceptor
+  // Direct Paystack Inline Popup Handler
   var form = document.getElementById('checkoutForm') || document.querySelector('form');
   if (form) {
     form.addEventListener('submit', function (e) {
       var channel = (form.querySelector('[name="payment_channel"]:checked') || {}).value || 'paystack';
+      var payRef = (document.getElementById('paystackRefInput') || {}).value || '';
 
-      if (channel === 'paystack' && isPaystackLive && typeof PaystackPop !== 'undefined') {
+      // If customer chose Paystack, keys are configured, and payment not yet authorized in popup
+      if (channel === 'paystack' && isPaystackLive && payRef === '' && typeof PaystackPop !== 'undefined' && paystackPublicKey) {
+        // Validate required delivery fields first
+        if (form.checkValidity && !form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+
         e.preventDefault();
 
         var submitBtn = document.getElementById('checkoutSubmitBtn') || form.querySelector('button[type="submit"]');
         var originalBtnHtml = submitBtn.innerHTML;
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="inline-block animate-spin mr-2">⟳</span> Connecting Paystack Popup...';
+        submitBtn.innerHTML = '<span class="inline-block animate-spin mr-2">⟳</span> Opening Paystack Modal...';
 
-        var formData = new FormData(form);
-        formData.set('ajax', '1');
+        var customerEmail = (form.querySelector('[name="email"]') || {}).value || '';
+        var customerPhone = (form.querySelector('[name="phone"]') || {}).value || '';
+        var customerName = (form.querySelector('[name="name"]') || {}).value || '';
+        if (!customerEmail || customerEmail.indexOf('@') === -1) {
+          customerEmail = 'customer_' + customerPhone.replace(/\D/g, '') + '@ziongroupsofcompanies.com';
+        }
 
-        fetch(form.action, {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
-          }
-        })
-        .then(function (res) {
-          return res.text().then(function (text) {
-            try {
-              return JSON.parse(text);
-            } catch (parseErr) {
-              console.warn('Raw response from server:', text);
-              var cleanMsg = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-              throw new Error(cleanMsg || 'Server returned an invalid response.');
+        var fee = getFee();
+        var currentTotal = Math.max(0, subtotal - discount) + fee;
+        var amountPesewas = Math.round(currentTotal * 100);
+
+        var generatedRef = 'ZION-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
+
+        try {
+          var handler = PaystackPop.setup({
+            key: paystackPublicKey,
+            email: customerEmail,
+            amount: amountPesewas,
+            currency: 'GHS',
+            ref: generatedRef,
+            metadata: {
+              custom_fields: [
+                { display_name: "Customer Name", variable_name: "customer_name", value: customerName },
+                { display_name: "Phone Number", variable_name: "phone_number", value: customerPhone }
+              ]
+            },
+            callback: function (response) {
+              var ref = response.reference || response.trxref || generatedRef;
+              document.getElementById('paystackRefInput').value = ref;
+              submitBtn.innerHTML = '<span class="inline-block mr-2">✓</span> Payment Authorized! Finalizing...';
+              form.submit();
+            },
+            onClose: function () {
+              submitBtn.disabled = false;
+              submitBtn.innerHTML = originalBtnHtml;
             }
           });
-        })
-        .then(function (data) {
-          if (!data.ok) {
-            alert(data.message || 'Could not initialize order. Please check all fields.');
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalBtnHtml;
-            return;
-          }
 
-          if (data.paystack) {
-            var handler = PaystackPop.setup({
-              key: data.key,
-              email: data.email,
-              amount: data.amount,
-              currency: data.currency || 'GHS',
-              ref: data.reference || data.order_no,
-              metadata: {
-                custom_fields: [
-                  { display_name: "Customer Name", variable_name: "customer_name", value: data.customer_name },
-                  { display_name: "Phone Number", variable_name: "phone_number", value: data.phone },
-                  { display_name: "Order Number", variable_name: "order_no", value: data.order_no }
-                ]
-              },
-              callback: function (response) {
-                submitBtn.innerHTML = '<span class="inline-block mr-2">✓</span> Payment Authorized. Finalizing...';
-                var ref = response.reference || response.trxref || data.reference;
-                var callbackUrl = data.callback_url || 'paystack_callback.php';
-                var delim = callbackUrl.indexOf('?') === -1 ? '?' : '&';
-                window.location.href = callbackUrl + delim + 'reference=' + encodeURIComponent(ref) + '&order_no=' + encodeURIComponent(data.order_no);
-              },
-              onClose: function () {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalBtnHtml;
-              }
-            });
-            handler.openIframe();
-          } else if (data.redirect) {
-            window.location.href = data.redirect;
-          }
-        })
-        .catch(function (err) {
-          console.error('Checkout error:', err);
+          handler.openIframe();
+        } catch (setupErr) {
+          console.error('Paystack popup setup error:', setupErr);
           submitBtn.disabled = false;
           submitBtn.innerHTML = originalBtnHtml;
-          var msg = (err && err.message) ? err.message : 'A network error occurred. Please try again or switch payment method.';
-          if (msg.length > 250) msg = msg.substring(0, 250) + '...';
-          alert(msg);
-        });
+          // Fallback to native post
+          form.submit();
+        }
       }
     });
   }
