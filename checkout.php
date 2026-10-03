@@ -233,10 +233,9 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
                 <div class="pay-panel px-4 pb-4 flex flex-col gap-2 <?= $key === 'paystack' ? '' : 'hidden' ?>">
                   <?php if ($key === 'paystack'): ?>
                     <p class="font-body-sm text-body-sm text-on-surface-variant">
-                      You will continue to Paystack's secure hosted checkout to pay with Visa, Mastercard,
-                      bank transfer, MTN MoMo, Telecel Cash or AT Money. Your order is confirmed the moment payment clears.
+                      A secure Paystack popup will open on your screen to pay with Mobile Money (MTN MoMo, Telecel Cash, AT Money) or Visa/Mastercard. Your order is confirmed the moment payment clears.
                     </p>
-                    <span class="font-label-tag text-label-tag uppercase tracking-wider text-secondary">No card details touch our servers</span>
+                    <span class="font-label-tag text-label-tag uppercase tracking-wider text-secondary">Instant popup &bull; No card details touch our servers</span>
                   <?php else: ?>
                     <p class="font-body-sm text-body-sm text-on-surface-variant">Pay the rider in cash or by MoMo transfer on delivery. Available in Greater Accra, Kumasi and Takoradi.</p>
                   <?php endif; ?>
@@ -297,7 +296,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
             </div>
           </dl>
 
-          <button class="mt-4 w-full inline-flex items-center justify-center gap-2 py-3.5 bg-primary-container text-on-primary font-label-nav text-label-nav font-bold uppercase tracking-widest rounded-lg shadow-md hover:bg-primary transition-colors active:scale-[0.99]"
+          <button id="checkoutSubmitBtn" class="mt-4 w-full inline-flex items-center justify-center gap-2 py-3.5 bg-primary-container text-on-primary font-label-nav text-label-nav font-bold uppercase tracking-widest rounded-lg shadow-md hover:bg-primary transition-colors active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
                   type="submit">
             <span class="material-symbols-outlined text-lg">lock</span>
             <span id="ctaLabel">Complete Order &amp; Pay <?= e(price($initTotal)) ?></span>
@@ -320,6 +319,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
   </div>
 </main>
 
+<script src="https://js.paystack.co/v1/inline.js"></script>
 <script>
 (function () {
   var subtotal = <?= json_encode((float) $cart['subtotal']) ?>;
@@ -329,6 +329,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
   var pickup = <?= json_encode((float) setting('shipping_pickup_fee', '0.00')) ?>;
   var freeAt = <?= json_encode((float) setting('free_shipping_threshold', (string) FREE_SHIPPING_THRESHOLD)) ?>;
   var currency = <?= json_encode(CURRENCY) ?>;
+  var isPaystackLive = <?= json_encode(is_paystack_configured()) ?>;
 
   function fmt(v) {
     return currency + ' ' + v.toLocaleString('en-US', {
@@ -366,6 +367,81 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
       });
     });
   });
+
+  // Paystack Popup (Inline) Form Interceptor
+  var form = document.querySelector('form[action*="actions.php"]');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      var channel = (form.querySelector('[name="payment_channel"]:checked') || {}).value || 'paystack';
+
+      if (channel === 'paystack' && isPaystackLive && typeof PaystackPop !== 'undefined') {
+        e.preventDefault();
+
+        var submitBtn = document.getElementById('checkoutSubmitBtn') || form.querySelector('button[type="submit"]');
+        var originalBtnHtml = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="inline-block animate-spin mr-2">⟳</span> Connecting Paystack Popup...';
+
+        var formData = new FormData(form);
+        formData.set('ajax', '1');
+
+        fetch(form.action, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+          }
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            alert(data.message || 'Could not initialize order. Please check all fields.');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHtml;
+            return;
+          }
+
+          if (data.paystack) {
+            var handler = PaystackPop.setup({
+              key: data.key,
+              email: data.email,
+              amount: data.amount,
+              currency: data.currency || 'GHS',
+              ref: data.reference || data.order_no,
+              metadata: {
+                custom_fields: [
+                  { display_name: "Customer Name", variable_name: "customer_name", value: data.customer_name },
+                  { display_name: "Phone Number", variable_name: "phone_number", value: data.phone },
+                  { display_name: "Order Number", variable_name: "order_no", value: data.order_no }
+                ]
+              },
+              callback: function (response) {
+                submitBtn.innerHTML = '<span class="inline-block mr-2">✓</span> Payment Authorized. Finalizing...';
+                var ref = response.reference || response.trxref || data.reference;
+                var callbackUrl = data.callback_url || 'paystack_callback.php';
+                var delim = callbackUrl.indexOf('?') === -1 ? '?' : '&';
+                window.location.href = callbackUrl + delim + 'reference=' + encodeURIComponent(ref) + '&order_no=' + encodeURIComponent(data.order_no);
+              },
+              onClose: function () {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml;
+              }
+            });
+            handler.openIframe();
+          } else if (data.redirect) {
+            window.location.href = data.redirect;
+          }
+        })
+        .catch(function (err) {
+          console.error('Checkout error:', err);
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalBtnHtml;
+          alert('A network error occurred. Please try again or switch payment method.');
+        });
+      }
+    });
+  }
 
   refresh();
 })();

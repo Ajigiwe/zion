@@ -16,9 +16,10 @@ csrf_check();
 $action = (string) ($_POST['action'] ?? '');
 $return = (string) ($_POST['return'] ?? '');
 
-/** True when the caller is our fetch() enhancement (wishlist toggles). */
+/** True when the caller is our fetch() enhancement (wishlist toggles, paystack popup). */
 $isAjax = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
-    || str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
+    || str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+    || (!empty($_POST['ajax']) && (string) $_POST['ajax'] === '1');
 
 function json_out(array $payload): never
 {

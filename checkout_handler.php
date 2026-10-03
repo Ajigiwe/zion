@@ -7,8 +7,26 @@ declare(strict_types=1);
 // renders the proper error flow instead of a fatal.
 require_once __DIR__ . '/config.php';
 
+if (!function_exists('json_out')) {
+    function json_out(array $payload): never
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+$isAjax = $isAjax ?? (
+    strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+    || str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+    || (!empty($_POST['ajax']) && $_POST['ajax'] === '1')
+);
+
 $lines = cart_rows();
 if ($lines === []) {
+    if ($isAjax) {
+        json_out(['ok' => false, 'message' => 'Your bag is empty.']);
+    }
     flash_set('error', 'Your bag is empty.');
     redirect_back(url('cart.php'));
 }
@@ -43,6 +61,9 @@ if (!in_array($method, ['metro', 'regional', 'pickup'], true)) {
 [$shipCode, $shipLabel, $shipFee] = shipping_quote($region, $method);
 
 if ($errors !== []) {
+    if ($isAjax) {
+        json_out(['ok' => false, 'message' => implode(' ', $errors)]);
+    }
     flash_set('error', implode(' ', $errors));
     redirect_back(url('checkout.php'));
 }
@@ -148,17 +169,39 @@ try {
     });
 } catch (Throwable $ex) {
     error_log('order failed: ' . $ex->getMessage());
+    if ($isAjax) {
+        json_out(['ok' => false, 'message' => 'We could not complete your order. Please try again.']);
+    }
     flash_set('error', 'We could not complete your order. Please try again.');
     redirect_back(url('checkout.php'));
 }
 
 [$orderNo, $orderId] = $orderInfo;
 
-// If live Paystack is configured, call Paystack API and redirect to the secure payment page
+// If live Paystack is configured, handle popup or hosted redirect
 if ($useLivePaystack) {
     $u = current_user();
     $payEmail = $email !== '' ? $email : (($u['email'] ?? '') ?: ('customer_' . preg_replace('/\D/', '', $phone) . '@ziongroups.com.gh'));
+    $_SESSION['pending_paystack_order'] = $orderNo;
 
+    // Return JSON for Paystack Popup (Inline)
+    if ($isAjax) {
+        json_out([
+            'ok'            => true,
+            'paystack'      => true,
+            'key'           => paystack_public_key(),
+            'email'         => $payEmail,
+            'amount'        => (int) round($total * 100), // GHS in pesewas
+            'currency'      => 'GHS',
+            'reference'     => $orderNo,
+            'order_no'      => $orderNo,
+            'customer_name' => $name,
+            'phone'         => $phone,
+            'callback_url'  => APP_URL . url('paystack_callback.php'),
+        ]);
+    }
+
+    // Standard Non-AJAX fallback (Redirect)
     $init = paystack_api_request('transaction/initialize', 'POST', [
         'email'        => $payEmail,
         'amount'       => (int) round($total * 100), // GHS in pesewas
@@ -173,7 +216,6 @@ if ($useLivePaystack) {
     ]);
 
     if ($init['ok'] && !empty($init['data']['authorization_url'])) {
-        $_SESSION['pending_paystack_order'] = $orderNo;
         header('Location: ' . $init['data']['authorization_url']);
         exit;
     }
@@ -206,6 +248,15 @@ if ($low !== []) {
         @mkdir(dirname($stampFile), 0775, true);
         @file_put_contents($stampFile, (string) time());
     }
+}
+
+if ($isAjax) {
+    flash_set('success', 'Order ' . $orderNo . ' confirmed. Thank you, ' . strtok($name, ' ') . '.');
+    json_out([
+        'ok'       => true,
+        'paystack' => false,
+        'redirect' => url('order_complete.php?no=' . urlencode($orderNo)),
+    ]);
 }
 
 flash_set('success', 'Order ' . $orderNo . ' confirmed. Thank you, ' . strtok($name, ' ') . '.');
