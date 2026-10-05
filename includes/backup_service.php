@@ -680,6 +680,42 @@ function backup_data_wipe(string $type, int $currentAdminId): array
             ];
             break;
 
+        case 'products_only':
+            // Wipe product items, images, specs, variants, bundles, reviews, carts, wishlists
+            // WITHOUT touching categories or brands!
+            db_exec('TRUNCATE TABLE `product_bundles`');
+            db_exec('TRUNCATE TABLE `product_specs`');
+            db_exec('TRUNCATE TABLE `product_variants`');
+            db_exec('TRUNCATE TABLE `product_images`');
+            db_exec('TRUNCATE TABLE `cart_items`');
+            db_exec('TRUNCATE TABLE `wishlist`');
+            db_exec('TRUNCATE TABLE `reviews`');
+            db_exec('TRUNCATE TABLE `products`');
+
+            // Clean uploaded product media (preserving .htaccess, .gitkeep, index.html)
+            $uploadsDir = dirname(__DIR__) . '/storage/uploads';
+            $cleanedFiles = 0;
+            if (is_dir($uploadsDir)) {
+                $it = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($uploadsDir, FilesystemIterator::SKIP_DOTS),
+                    RecursiveIteratorIterator::CHILD_FIRST
+                );
+                foreach ($it as $file) {
+                    if ($file->isFile() && !in_array($file->getFilename(), ['.htaccess', '.gitkeep', 'index.html'], true)) {
+                        @unlink($file->getRealPath());
+                        $cleanedFiles++;
+                    } elseif ($file->isDir()) {
+                        @rmdir($file->getRealPath());
+                    }
+                }
+            }
+
+            $wipedDetails = [
+                'type'    => 'products_only',
+                'message' => "All products, variants, specs, bundles, and {$cleanedFiles} uploaded media files have been cleared. Categories and Brands remain intact.",
+            ];
+            break;
+
         case 'catalog':
             // Wipe all product catalog tables
             db_exec('TRUNCATE TABLE `product_bundles`');

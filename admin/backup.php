@@ -169,6 +169,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 // Verify typed confirmation phrase
                 $expectedPhrases = [
                     'transactions'   => 'CONFIRM-WIPE-TRANSACTIONS',
+                    'products_only'  => 'CONFIRM-WIPE-PRODUCTS',
                     'catalog'        => 'CONFIRM-WIPE-CATALOG',
                     'seed_reset'     => 'CONFIRM-SEED-RESET',
                     'factory_reset'  => 'CONFIRM-FACTORY-RESET',
@@ -678,18 +679,48 @@ admin_head('Backup & Wipe Operations', 'backup');
         </div>
       </div>
 
-      <!-- Option 2: Wipe Product Catalog & Media -->
+      <!-- Option 2: Wipe Products Only (Keep Categories & Brands) -->
+      <div class="p-6 rounded-2xl border border-outline-variant/80 bg-surface shadow-xs flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <span class="font-label-tag text-label-tag uppercase tracking-wider px-2 py-0.5 rounded bg-primary-container/60 text-primary font-bold">
+              Targeted Wipe
+            </span>
+            <span class="material-symbols-outlined text-xl text-primary">category</span>
+          </div>
+          <h3 class="font-headline-sm text-headline-sm font-bold text-on-surface">Wipe Products Only</h3>
+          <p class="font-body-sm text-body-sm text-on-surface-variant mt-2">
+            Deletes all products, variants, specs, bundles, product reviews, and uploaded product images, while leaving categories and brands structure completely untouched.
+          </p>
+          <div class="mt-4 p-3 rounded-lg bg-surface-container text-xs text-on-surface space-y-1">
+            <div class="font-bold text-on-surface flex items-center gap-1.5 text-emerald-700">
+              <span class="material-symbols-outlined text-sm">check</span> Preserves:
+            </div>
+            <div>All Categories, Category hierarchy, Brands, Customer accounts, Orders, and Settings.</div>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-outline-variant/60">
+          <button type="button" onclick="openWipeModal('products_only', 'Wipe Products Only (Preserve Categories & Brands)', 'CONFIRM-WIPE-PRODUCTS', 'All products, variants, specifications, bundles, and product images will be permanently cleared. Categories and Brands will NOT be deleted.')"
+                  class="w-full py-2.5 px-4 bg-surface-container-high hover:bg-error/10 hover:text-error hover:border-error border border-outline-variant rounded-lg font-label-nav text-label-nav uppercase tracking-wider font-bold transition-colors text-on-surface flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined text-base">delete_sweep</span>
+            Wipe Products Only
+          </button>
+        </div>
+      </div>
+
+      <!-- Option 3: Wipe Full Catalogue (Including Categories & Brands) -->
       <div class="p-6 rounded-2xl border border-outline-variant/80 bg-surface shadow-xs flex flex-col justify-between">
         <div>
           <div class="flex items-center justify-between gap-2 mb-3">
             <span class="font-label-tag text-label-tag uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 font-bold border border-amber-500/20">
-              Inventory Reset
+              Full Catalogue Reset
             </span>
             <span class="material-symbols-outlined text-xl text-amber-600">inventory_2</span>
           </div>
-          <h3 class="font-headline-sm text-headline-sm font-bold text-on-surface">Wipe Catalogue & Media Uploads</h3>
+          <h3 class="font-headline-sm text-headline-sm font-bold text-on-surface">Wipe Everything in Catalogue</h3>
           <p class="font-body-sm text-body-sm text-on-surface-variant mt-2">
-            Deletes all products, variants, specs, bundles, categories, brands, and clears uploaded photos from storage/uploads/.
+            Deletes all products, variants, specs, bundles, AND all categories, brands, and uploaded photos from storage/uploads/.
           </p>
           <div class="mt-4 p-3 rounded-lg bg-surface-container text-xs text-on-surface space-y-1">
             <div class="font-bold text-on-surface flex items-center gap-1.5 text-emerald-700">
@@ -700,10 +731,10 @@ admin_head('Backup & Wipe Operations', 'backup');
         </div>
 
         <div class="mt-6 pt-4 border-t border-outline-variant/60">
-          <button type="button" onclick="openWipeModal('catalog', 'Wipe Catalogue & Media Uploads', 'CONFIRM-WIPE-CATALOG', 'All products, variants, specifications, bundles, categories, brands, and uploaded images will be permanently erased.')"
+          <button type="button" onclick="openWipeModal('catalog', 'Wipe Full Catalogue & Media Uploads', 'CONFIRM-WIPE-CATALOG', 'All products, variants, specifications, bundles, categories, brands, and uploaded images will be permanently erased.')"
                   class="w-full py-2.5 px-4 bg-surface-container-high hover:bg-error/10 hover:text-error hover:border-error border border-outline-variant rounded-lg font-label-nav text-label-nav uppercase tracking-wider font-bold transition-colors text-on-surface flex items-center justify-center gap-2">
             <span class="material-symbols-outlined text-base">delete_sweep</span>
-            Wipe Product Catalogue
+            Wipe Full Catalogue
           </button>
         </div>
       </div>
