@@ -108,6 +108,13 @@ function settings_defaults(): array
         'discreet_packaging_desc'    => 'Intimate apparel ships in unmarked, plain luxury charcoal boxes with no reference to lingerie on the courier airway bill.',
         'discreet_packaging_default' => '1',
 
+        /* returns & refund policies */
+        'policy_returns_days'          => '7',
+        'policy_returns_summary'       => 'Unworn, unopened items in original packaging can be returned within 7 days of delivery. If something arrives faulty or wrong, we fix it with a replacement or full refund including return shipping.',
+        'policy_returns_full'          => 'Changed your mind? Unworn, unopened items in original packaging can be returned within 7 days of delivery. Faulty or incorrectly supplied items are replaced or refunded in full, including return shipping. Please contact concierge with your order number to initiate a return.',
+        'policy_lingerie_hygiene'      => 'For health and hygiene safety, lingerie, bodysuits and intimate apparel must be unworn, unwashed, and returned in their original packaging with all hygiene seals, liners and tags completely intact.',
+        'policy_instruments_warranty'  => 'Musical instruments, studio equipment and church sound setups carry full manufacturer warranties against defects. Keep your invoice as proof of purchase. Normal wear and unauthorized modifications are not covered.',
+
         /* payment gateway */
         'paystack_public_key' => '',
         'paystack_secret_key' => '',

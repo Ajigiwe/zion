@@ -23,6 +23,8 @@ const TEXT_KEYS = [
     'shipping_pickup_tag', 'shipping_pickup_title', 'shipping_pickup_desc', 'shipping_pickup_fee',
     'free_shipping_threshold',
     'discreet_packaging_title', 'discreet_packaging_desc', 'discreet_packaging_default',
+    'policy_returns_days', 'policy_returns_summary', 'policy_returns_full',
+    'policy_lingerie_hygiene', 'policy_instruments_warranty',
     'paystack_public_key', 'paystack_secret_key',
 ];
 
@@ -432,6 +434,7 @@ admin_head('Settings', 'settings');
     <?php foreach ([
         'general'   => 'General',
         'shipping'  => 'Dispatch & Shipping',
+        'policies'  => 'Refunds & Returns',
         'hero'      => 'Hero slider',
         'authslider' => 'Sign-in slider',
         'theme'     => 'Theme',
@@ -896,6 +899,62 @@ admin_head('Settings', 'settings');
             Open Backups Center
           </a>
         </div>
+      </div>
+    </section>
+
+    <!-- REFUNDS & RETURN POLICIES -->
+    <section id="policies" class="set-section bg-surface-container-lowest rounded-xl shadow-xs p-space-md">
+      <div class="flex items-center gap-3 mb-space-sm">
+        <span class="material-symbols-outlined text-secondary text-2xl">policy</span>
+        <div>
+          <h2 class="font-headline-sm text-headline-sm text-on-surface font-bold">Refunds &amp; Return Policies</h2>
+          <p class="font-body-sm text-body-sm text-on-surface-variant">
+            Manage your store's return window, refund terms, lingerie hygiene requirements, and instrument warranty policies. These update live on the Shipping &amp; Delivery, FAQ, and Terms of Service pages.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-space-sm mb-space-md">
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Return Window (Days)</span>
+          <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none font-mono"
+                 type="number" min="0" max="365" name="policy_returns_days" value="<?= $v('policy_returns_days') ?>" placeholder="7"/>
+          <span class="font-body-sm text-[11px] text-on-surface-variant">Number of days from delivery date customers can request returns or exchanges.</span>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Quick Policy Notice (Summary)</span>
+          <textarea class="min-h-16 p-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                    name="policy_returns_summary" placeholder="Brief 1-2 sentence policy summary..."><?= $v('policy_returns_summary') ?></textarea>
+          <span class="font-body-sm text-[11px] text-on-surface-variant">Displayed on FAQ and checkout summary cards.</span>
+        </label>
+
+        <label class="flex flex-col gap-1 md:col-span-2">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Full Return &amp; Refund Policy Text</span>
+          <textarea class="min-h-24 p-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                    name="policy_returns_full" placeholder="Full return and exchange terms..."><?= $v('policy_returns_full') ?></textarea>
+          <span class="font-body-sm text-[11px] text-on-surface-variant">Shown prominently on the dedicated Shipping &amp; Returns policy page.</span>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Lingerie &amp; Intimate Apparel Hygiene Seal Terms</span>
+          <textarea class="min-h-20 p-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                    name="policy_lingerie_hygiene" placeholder="Hygiene rules for intimate apparel..."><?= $v('policy_lingerie_hygiene') ?></textarea>
+          <span class="font-body-sm text-[11px] text-on-surface-variant">Specifies conditions for unworn lingerie and hygienic liners.</span>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Instruments &amp; Sound Equipment Warranty Policy</span>
+          <textarea class="min-h-20 p-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                    name="policy_instruments_warranty" placeholder="Warranty and equipment return policy..."><?= $v('policy_instruments_warranty') ?></textarea>
+          <span class="font-body-sm text-[11px] text-on-surface-variant">Outlines manufacturer warranty and equipment testing terms.</span>
+        </label>
+      </div>
+
+      <div class="mt-space-sm flex flex-wrap gap-3 font-body-sm text-body-sm text-on-surface-variant border-t border-outline-variant pt-3">
+        <a class="text-primary underline" target="_blank" rel="noopener" href="<?= e(url('page.php?slug=shipping-and-returns')) ?>">Preview Shipping &amp; Returns page</a>
+        <span>&middot;</span>
+        <a class="text-primary underline" target="_blank" rel="noopener" href="<?= e(url('page.php?slug=terms')) ?>">Preview Terms of Service</a>
       </div>
     </section>
 
