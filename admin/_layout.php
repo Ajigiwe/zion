@@ -21,16 +21,17 @@ function status_pill(string $status): string
 function admin_nav_items(): array
 {
     return [
-        'index'      => ['dashboard', 'Dashboard'],
-        'products'   => ['category', 'Products'],
-        'categories' => ['list_alt', 'Categories'],
-        'brands'     => ['sell', 'Brands'],
-        'orders'     => ['receipt_long', 'Orders'],
-        'reviews'    => ['rate_review', 'Reviews'],
-        'customers'  => ['group', 'Customers'],
-        'messages'   => ['mail', 'Messages'],
-        'backup'     => ['database', 'Backup & Wipe'],
-        'settings'   => ['settings', 'Settings'],
+        'index'         => ['dashboard', 'Dashboard'],
+        'products'      => ['category', 'Products'],
+        'bulk_products' => ['dataset', 'Bulk Products'],
+        'categories'    => ['list_alt', 'Categories'],
+        'brands'        => ['sell', 'Brands'],
+        'orders'        => ['receipt_long', 'Orders'],
+        'reviews'       => ['rate_review', 'Reviews'],
+        'customers'     => ['group', 'Customers'],
+        'messages'      => ['mail', 'Messages'],
+        'backup'        => ['database', 'Backup & Wipe'],
+        'settings'      => ['settings', 'Settings'],
     ];
 }
 

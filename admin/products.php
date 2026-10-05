@@ -72,8 +72,14 @@ admin_head('Products', 'products');
       <?= e(plural($totalSku, 'SKU', 'SKUs')) ?> on file &middot; <?= e(plural($inactive, 'draft', 'drafts')) ?> hidden from the storefront.
     </p>
   </div>
-  <a class="px-5 py-2.5 bg-primary-container text-on-primary rounded-lg font-label-nav text-label-nav font-bold uppercase tracking-wider hover:bg-primary"
-     href="<?= e(url('admin/product_form.php')) ?>">+ New product</a>
+  <div class="flex flex-wrap items-center gap-2">
+    <a class="px-4 py-2.5 bg-surface-container-lowest border border-outline-variant text-on-surface hover:border-primary hover:text-primary rounded-lg font-label-nav text-label-nav font-bold uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors"
+       href="<?= e(url('admin/bulk_products.php')) ?>">
+      <span class="material-symbols-outlined text-base">upload_file</span> Bulk Actions
+    </a>
+    <a class="px-5 py-2.5 bg-primary-container text-on-primary rounded-lg font-label-nav text-label-nav font-bold uppercase tracking-wider hover:bg-primary transition-colors"
+       href="<?= e(url('admin/product_form.php')) ?>">+ New product</a>
+  </div>
 </div>
 
 <form method="get" class="flex flex-wrap gap-2 mb-space-md">
