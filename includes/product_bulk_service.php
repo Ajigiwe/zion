@@ -203,8 +203,8 @@ function bulk_parse_csv_string(string $content): array
             'images', 'gallery', 'additional_images' => 'gallery_images',
             'active', 'published', 'status' => 'is_active',
             'featured' => 'is_featured',
-            'short_desc', 'excerpt' => 'short_description',
-            'desc', 'body', 'details' => 'description',
+            'short_desc', 'short_description', 'excerpt', 'summary', 'brief', 'short' => 'short_description',
+            'desc', 'description', 'full_desc', 'full_description', 'product_desc', 'product_description', 'long_description', 'long_desc', 'body', 'details', 'content', 'about' => 'description',
             default => $clean,
         };
         $normalizedHeaders[$idx] = $clean;

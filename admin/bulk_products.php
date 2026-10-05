@@ -559,8 +559,13 @@ admin_head('Bulk Product Management', 'bulk_products');
                       </div>
                       <div>
                         <label class="block font-label-nav text-[11px] uppercase tracking-wider text-on-surface-variant font-bold mb-1">Short Description</label>
-                        <input type="text" name="items[<?= $idx ?>][short_description]" value="<?= e($d['short_description']) ?>"
+                        <input type="text" name="items[<?= $idx ?>][short_description]" value="<?= e($d['short_description']) ?>" placeholder="Brief 1-sentence product summary..."
                                class="w-full h-9 px-3 border border-outline-variant rounded-lg text-xs bg-surface-container-lowest focus:border-primary outline-none" />
+                      </div>
+                      <div>
+                        <label class="block font-label-nav text-[11px] uppercase tracking-wider text-on-surface-variant font-bold mb-1">Full Description</label>
+                        <textarea name="items[<?= $idx ?>][description]" rows="3" placeholder="Full product details, specifications, care instructions..."
+                                  class="w-full p-2.5 border border-outline-variant rounded-lg text-xs bg-surface-container-lowest focus:border-primary outline-none"><?= e($d['description']) ?></textarea>
                       </div>
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
