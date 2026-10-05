@@ -29,6 +29,7 @@ function admin_nav_items(): array
         'reviews'    => ['rate_review', 'Reviews'],
         'customers'  => ['group', 'Customers'],
         'messages'   => ['mail', 'Messages'],
+        'backup'     => ['database', 'Backup & Wipe'],
         'settings'   => ['settings', 'Settings'],
     ];
 }

@@ -412,7 +412,9 @@ admin_head('Settings', 'settings');
       <h1 class="font-headline-lg text-headline-lg text-on-surface font-bold">Settings</h1>
       <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Brand, sliders, theme, card arrangement, contact details and location - saved straight to the live storefront.</p>
     </div>
-    <div class="flex gap-3">
+    <div class="flex flex-wrap gap-2">
+      <a class="px-4 py-2.5 border border-outline-variant rounded-lg font-label-nav text-label-nav uppercase text-primary hover:bg-primary-container/30 flex items-center gap-1.5 font-bold"
+         href="<?= e(url('admin/backup.php')) ?>"><span class="material-symbols-outlined text-base">database</span> Backups & Wipe</a>
       <a class="px-4 py-2.5 border border-outline-variant rounded-lg font-label-nav text-label-nav uppercase text-on-surface-variant hover:bg-surface-container-lowest"
          target="_blank" rel="noopener" href="<?= e(url('page.php?slug=contact')) ?>">Preview contact page</a>
       <button class="px-5 py-2.5 bg-primary-container text-on-primary rounded-lg font-label-nav text-label-nav font-bold uppercase tracking-wider hover:bg-primary"
@@ -872,6 +874,27 @@ admin_head('Settings', 'settings');
                    type="password" name="paystack_secret_key" value="<?= $v('paystack_secret_key') ?>" placeholder="<?= e(PAYSTACK_SECRET_KEY ? '••••••••••••••••' : 'sk_live_... or sk_test_...') ?>"/>
             <span class="font-body-sm text-[11px] text-on-surface-variant"><?= PAYSTACK_SECRET_KEY ? 'Configured in .env' : 'Leave blank if set in .env' ?></span>
           </label>
+        </div>
+      </div>
+
+      <!-- System Reliability & Backups Quick Card -->
+      <div class="border-t border-outline-variant mt-6 pt-4">
+        <div class="p-4 rounded-xl bg-surface-container border border-outline-variant/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <span class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-xl">database</span>
+            </span>
+            <div>
+              <h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">Database Backups & Safety Snapshots</h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+                Generate full system archives, download raw SQL dumps, restore previous snapshots, or run controlled data wipe operations.
+              </p>
+            </div>
+          </div>
+          <a href="<?= e(url('admin/backup.php')) ?>" class="px-4 py-2.5 bg-primary text-on-primary hover:bg-primary/90 rounded-lg font-label-nav text-label-nav uppercase tracking-wider font-bold transition-colors shrink-0 flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined text-base">cloud_sync</span>
+            Open Backups Center
+          </a>
         </div>
       </div>
     </section>

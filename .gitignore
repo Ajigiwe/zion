@@ -10,6 +10,11 @@
 /storage/uploads/*
 !/storage/uploads/.htaccess
 !/storage/uploads/.gitkeep
+/storage/backups/*
+!/storage/backups/.htaccess
+!/storage/backups/index.html
+!/storage/backups/.gitkeep
+/storage/deploy_meta.json
 
 # OS / editor noise
 Thumbs.db
