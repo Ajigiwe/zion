@@ -25,20 +25,13 @@ set_jsonld([
 
 $featuredByDept = [];
 foreach (['lingerie', 'instruments'] as $dept) {
-    $rows = db_all(
+    $featuredByDept[$dept] = db_all(
         'SELECT p.*, c.name AS category_name, c.slug AS category_slug
          FROM products p LEFT JOIN categories c ON c.id = p.category_id
          WHERE p.is_active = 1 AND p.is_featured = 1 AND p.department = ?
          ORDER BY COALESCE(c.sort_order, 9999), p.rating DESC, p.id ASC LIMIT 20',
         [$dept]
     );
-    $grouped = [];
-    foreach ($rows as $r) {
-        $cat = trim((string) ($r['category_name'] ?? ''));
-        if ($cat === '') { $cat = 'Uncategorised'; }
-        $grouped[$cat][] = $r;
-    }
-    $featuredByDept[$dept] = $grouped;
 }
 $hasFeatured = ($featuredByDept['lingerie'] !== [] || $featuredByDept['instruments'] !== []);
 
@@ -188,7 +181,7 @@ render_head();
     </div>
   </section>
 
-  <!-- 3. FEATURED PRODUCTS (20 per department, grouped by category) -->
+  <!-- 3. FEATURED PRODUCTS (up to 20 per department) -->
   <?php if ($hasFeatured): ?>
   <section class="w-full bg-surface-container-low py-space-xl">
     <div class="max-w-[1360px] mx-auto px-margin">
@@ -213,14 +206,11 @@ render_head();
             Shop <?= $dept === 'lingerie' ? 'Lingerie' : 'Music & Audio' ?> <span class="material-symbols-outlined text-base">arrow_forward</span>
           </a>
         </div>
-        <?php foreach ($featuredByDept[$dept] as $catName => $items): ?>
-          <h4 class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-[0.15em] mt-space-md mb-space-sm"><?= e($catName) ?> <span class="text-outline">· <?= count($items) ?></span></h4>
-          <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-space-lg">
-            <?php foreach ($items as $p): ?>
-              <?php product_card($p); ?>
-            <?php endforeach; ?>
-          </div>
-        <?php endforeach; ?>
+        <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-space-lg">
+          <?php foreach ($featuredByDept[$dept] as $p): ?>
+            <?php product_card($p); ?>
+          <?php endforeach; ?>
+        </div>
       <?php endforeach; ?>
     </div>
   </section>
