@@ -23,10 +23,24 @@ set_jsonld([
     ],
 ]);
 
-$homeFeatured = home_featured_count();
-$featured = db_all(
-    'SELECT * FROM products WHERE is_active = 1 AND is_featured = 1 ORDER BY rating DESC, id ASC LIMIT ' . max(8, $homeFeatured)
-);
+$featuredByDept = [];
+foreach (['lingerie', 'instruments'] as $dept) {
+    $rows = db_all(
+        'SELECT p.*, c.name AS category_name, c.slug AS category_slug
+         FROM products p LEFT JOIN categories c ON c.id = p.category_id
+         WHERE p.is_active = 1 AND p.is_featured = 1 AND p.department = ?
+         ORDER BY COALESCE(c.sort_order, 9999), p.rating DESC, p.id ASC LIMIT 20',
+        [$dept]
+    );
+    $grouped = [];
+    foreach ($rows as $r) {
+        $cat = trim((string) ($r['category_name'] ?? ''));
+        if ($cat === '') { $cat = 'Uncategorised'; }
+        $grouped[$cat][] = $r;
+    }
+    $featuredByDept[$dept] = $grouped;
+}
+$hasFeatured = ($featuredByDept['lingerie'] !== [] || $featuredByDept['instruments'] !== []);
 
 $homeNew = home_new_count();
 $newProducts = $homeNew > 0 ? db_all(
@@ -174,7 +188,8 @@ render_head();
     </div>
   </section>
 
-  <!-- 3. FEATURED PRODUCTS -->
+  <!-- 3. FEATURED PRODUCTS (20 per department, grouped by category) -->
+  <?php if ($hasFeatured): ?>
   <section class="w-full bg-surface-container-low py-space-xl">
     <div class="max-w-[1360px] mx-auto px-margin">
       <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-space-lg gap-4">
@@ -190,13 +205,26 @@ render_head();
         </a>
       </div>
 
-      <div class="grid <?= e(product_grid_classes()) ?> gap-space-lg">
-        <?php foreach (array_slice($featured, 0, $homeFeatured) as $p): ?>
-          <?php product_card($p); ?>
+      <?php foreach (['lingerie' => 'Featured Lingerie', 'instruments' => 'Featured Instruments & Audio'] as $dept => $deptTitle): ?>
+        <?php if ($featuredByDept[$dept] === []) { continue; } ?>
+        <div class="flex items-center justify-between mt-space-lg mb-space-md first:mt-0">
+          <h3 class="font-headline-md text-headline-md text-on-surface font-bold"><?= e($deptTitle) ?></h3>
+          <a class="inline-flex items-center gap-1 font-label-nav text-label-nav text-primary font-bold uppercase tracking-wider hover:text-primary-container transition-colors" href="<?= e(url('shop.php?dept=' . $dept)) ?>">
+            Shop <?= $dept === 'lingerie' ? 'Lingerie' : 'Music & Audio' ?> <span class="material-symbols-outlined text-base">arrow_forward</span>
+          </a>
+        </div>
+        <?php foreach ($featuredByDept[$dept] as $catName => $items): ?>
+          <h4 class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-[0.15em] mt-space-md mb-space-sm"><?= e($catName) ?> <span class="text-outline">· <?= count($items) ?></span></h4>
+          <div class="grid <?= e(product_grid_classes()) ?> gap-space-lg">
+            <?php foreach ($items as $p): ?>
+              <?php product_card($p); ?>
+            <?php endforeach; ?>
+          </div>
         <?php endforeach; ?>
-      </div>
+      <?php endforeach; ?>
     </div>
   </section>
+  <?php endif; ?>
 
   <?php if ($homeNew > 0 && $newProducts !== []): ?>
   <!-- 3b. NEW ARRIVALS -->

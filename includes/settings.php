@@ -34,7 +34,6 @@ function settings_defaults(): array
         /* card arrangement */
         'grid_columns'  => '4',
         'card_ratio'    => 'auto',
-        'home_featured' => '4',
         'home_new' => '8',
 
         /* contact details */
@@ -624,12 +623,6 @@ function card_ratio_classes(?string $department = null): string
         'landscape' => 'aspect-[4/3]',
         default     => 'aspect-[4/5]',
     };
-}
-
-/** How many featured products the homepage shows. */
-function home_featured_count(): int
-{
-    return max(4, min(12, (int) setting('home_featured')));
 }
 
 /** How many new arrivals the homepage shows (0 = section hidden). */
