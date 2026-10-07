@@ -35,6 +35,7 @@ function settings_defaults(): array
         'grid_columns'  => '4',
         'card_ratio'    => 'auto',
         'home_featured' => '4',
+        'home_new' => '8',
 
         /* contact details */
         'contact_email'     => 'concierge@ziongroups.com.gh',
@@ -629,6 +630,12 @@ function card_ratio_classes(?string $department = null): string
 function home_featured_count(): int
 {
     return max(4, min(12, (int) setting('home_featured')));
+}
+
+/** How many new arrivals the homepage shows (0 = section hidden). */
+function home_new_count(): int
+{
+    return max(0, min(12, (int) setting('home_new')));
 }
 
 /* ------------------------------------------------ contact + location */

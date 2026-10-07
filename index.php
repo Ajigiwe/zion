@@ -28,6 +28,11 @@ $featured = db_all(
     'SELECT * FROM products WHERE is_active = 1 AND is_featured = 1 ORDER BY rating DESC, id ASC LIMIT ' . max(8, $homeFeatured)
 );
 
+$homeNew = home_new_count();
+$newProducts = $homeNew > 0 ? db_all(
+    'SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC LIMIT ' . $homeNew
+) : [];
+
 $categories = db_all(
     'SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order'
 );
@@ -192,6 +197,32 @@ render_head();
       </div>
     </div>
   </section>
+
+  <?php if ($homeNew > 0 && $newProducts !== []): ?>
+  <!-- 3b. NEW ARRIVALS -->
+  <section class="w-full bg-surface py-space-xl">
+    <div class="max-w-[1360px] mx-auto px-margin">
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-space-lg gap-4">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2 h-2 rounded-full bg-secondary"></span>
+            <span class="font-label-tag text-label-tag text-on-surface-variant uppercase tracking-[0.18em]">Just Landed</span>
+          </div>
+          <h2 class="font-headline-lg text-headline-lg text-on-surface font-bold">New Arrivals</h2>
+        </div>
+        <a class="inline-flex items-center gap-1.5 font-label-nav text-label-nav text-primary font-bold uppercase tracking-wider hover:text-primary-container transition-colors" href="<?= e(url('shop.php?sort=newest')) ?>">
+          Shop Newest <span class="material-symbols-outlined text-base">arrow_forward</span>
+        </a>
+      </div>
+
+      <div class="grid <?= e(product_grid_classes()) ?> gap-space-lg">
+        <?php foreach ($newProducts as $p): ?>
+          <?php product_card($p); ?>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </section>
+  <?php endif; ?>
 
   <!-- 4. EDITORIAL SPLIT BANNERS -->
   <section class="w-full max-w-[1360px] mx-auto px-margin py-space-xl">

@@ -17,7 +17,7 @@ const TEXT_KEYS = [
     'contact_email', 'contact_phone', 'contact_whatsapp', 'contact_hours', 'contact_response',
     'address_line', 'address_city', 'address_country', 'map_lat', 'map_lng',
     'social_instagram', 'social_tiktok', 'social_facebook', 'social_youtube',
-    'grid_columns', 'card_ratio', 'home_featured',
+    'grid_columns', 'card_ratio', 'home_featured', 'home_new',
     'shipping_metro_tag', 'shipping_metro_title', 'shipping_metro_desc', 'shipping_metro_fee',
     'shipping_regional_tag', 'shipping_regional_title', 'shipping_regional_desc', 'shipping_regional_fee',
     'shipping_pickup_tag', 'shipping_pickup_title', 'shipping_pickup_desc', 'shipping_pickup_fee',
@@ -83,6 +83,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $save['grid_columns'] = in_array($save['grid_columns'] ?? '', ['2', '3', '4'], true) ? (string) $save['grid_columns'] : '4';
     $save['card_ratio']   = in_array($save['card_ratio'] ?? '', ['auto', 'portrait', 'square', 'landscape'], true) ? (string) $save['card_ratio'] : 'auto';
     $save['home_featured'] = in_array($save['home_featured'] ?? '', ['4', '8', '12'], true) ? (string) $save['home_featured'] : '4';
+    $save['home_new'] = in_array($save['home_new'] ?? '', ['0', '4', '8', '12'], true) ? (string) $save['home_new'] : '8';
 
     if (($save['site_name'] ?? '') === '') {
         $errors[] = 'The site name cannot be empty.';
@@ -613,7 +614,7 @@ admin_head('Settings', 'settings');
     <!-- CARD ARRANGEMENT -->
     <section id="layout" class="set-section bg-surface-container-lowest rounded-xl shadow-xs p-space-md">
       <h2 class="font-headline-sm text-headline-sm text-on-surface font-bold mb-space-sm">Card arrangement</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-sm">
         <div class="flex flex-col gap-2">
           <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Products per row</span>
           <div class="flex gap-2">
@@ -643,6 +644,17 @@ admin_head('Settings', 'settings');
               <option value="<?= $n ?>" <?= setting('home_featured') === $n ? 'selected' : '' ?>><?= $n ?> products</option>
             <?php endforeach; ?>
           </select>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Homepage new arrivals</span>
+          <select class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none" name="home_new">
+            <option value="0" <?= setting('home_new') === '0' ? 'selected' : '' ?>>Hidden</option>
+            <?php foreach (['4', '8', '12'] as $n): ?>
+              <option value="<?= $n ?>" <?= setting('home_new') === $n ? 'selected' : '' ?>><?= $n ?> products</option>
+            <?php endforeach; ?>
+          </select>
+          <span class="font-body-sm text-body-sm text-on-surface-variant">Newest active products by date added. Hidden removes the section.</span>
         </label>
       </div>
     </section>
