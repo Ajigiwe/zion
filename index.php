@@ -206,7 +206,7 @@ render_head();
             Shop <?= $dept === 'lingerie' ? 'Lingerie' : 'Music & Audio' ?> <span class="material-symbols-outlined text-base">arrow_forward</span>
           </a>
         </div>
-        <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-space-lg">
+        <div class="product-grid grid grid-cols-2 gap-3 sm:gap-space-lg">
           <?php foreach ($featuredByDept[$dept] as $p): ?>
             <?php product_card($p); ?>
           <?php endforeach; ?>
