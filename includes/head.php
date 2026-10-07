@@ -39,7 +39,7 @@ $jsonld    = page_jsonld();
   <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
   <link href="<?= e(font_css_url()) ?>" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&amp;display=swap" rel="stylesheet"/>
-  <link href="<?= e(url('assets/base.css')) ?>" rel="stylesheet"/>
+  <link href="<?= e(url('assets/base.css') . '?v=' . ((int) @filemtime(__DIR__ . '/../assets/base.css'))) ?>" rel="stylesheet"/>
   <script src="https://cdn.tailwindcss.com"></script>
   <script id="tailwind-config"><?= tailwind_config_js() ?></script>
   <?php foreach ($jsonld as $block): ?>
