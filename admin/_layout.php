@@ -236,20 +236,17 @@ function admin_foot(): void
   </div>
   <script>
     (function () {
-      var body = document.body;
-      var aside = document.getElementById('admin-nav');
-      var backdrop = document.getElementById('navBackdrop');
-      var collapseBtn = document.getElementById('navCollapse');
-      var openBtn = document.getElementById('navOpen');
       var KEY = 'zion-admin-nav';
       var mq = window.matchMedia('(min-width: 1024px)');
 
       function icon() {
-        var i = collapseBtn && collapseBtn.querySelector('[data-nav-icon]');
-        if (i) { i.textContent = body.classList.contains('nav-collapsed') ? 'left_panel_open' : 'left_panel_close'; }
+        var btn = document.getElementById('navCollapse');
+        var i = btn && btn.querySelector('[data-nav-icon]');
+        if (i) { i.textContent = document.body.classList.contains('nav-collapsed') ? 'left_panel_open' : 'left_panel_close'; }
       }
 
       function sync() {
+        var body = document.body;
         var stored = null;
         try { stored = localStorage.getItem(KEY); } catch (e) {}
         if (mq.matches) {
@@ -261,30 +258,38 @@ function admin_foot(): void
         icon();
       }
 
-      if (collapseBtn) {
-        collapseBtn.addEventListener('click', function () {
+      // Delegated: #navOpen lives inside [data-ajax-out] and is replaced on
+      // every form[data-ajax] save, which would drop direct listeners.
+      document.addEventListener('click', function (e) {
+        if (!e.target || !e.target.closest) { return; }
+        var body = document.body;
+        if (e.target.closest('#navCollapse')) {
           if (mq.matches) {
             var collapsed = !body.classList.contains('nav-collapsed');
             body.classList.toggle('nav-collapsed', collapsed);
-            try { localStorage.setItem(KEY, collapsed ? 'collapsed' : 'expanded'); } catch (e) {}
+            try { localStorage.setItem(KEY, collapsed ? 'collapsed' : 'expanded'); } catch (err) {}
             icon();
           } else {
             body.classList.remove('nav-open');
           }
-        });
-      }
-      if (openBtn) {
-        openBtn.addEventListener('click', function () { body.classList.add('nav-open'); });
-      }
-      if (backdrop) {
-        backdrop.addEventListener('click', function () { body.classList.remove('nav-open'); });
-      }
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { body.classList.remove('nav-open'); }
+          return;
+        }
+        if (e.target.closest('#navOpen')) {
+          body.classList.add('nav-open');
+          return;
+        }
+        if (e.target.closest('#navBackdrop')) {
+          body.classList.remove('nav-open');
+        }
       });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { document.body.classList.remove('nav-open'); }
+      });
+      document.addEventListener('ajax:done', sync);
       if (mq.addEventListener) { mq.addEventListener('change', sync); }
       else if (mq.addListener) { mq.addListener(sync); }
       sync();
+      var aside = document.getElementById('admin-nav');
       if (aside) { aside.removeAttribute('hidden'); }
     })();
   </script>
