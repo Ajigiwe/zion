@@ -215,7 +215,7 @@ render_head();
         </div>
         <?php foreach ($featuredByDept[$dept] as $catName => $items): ?>
           <h4 class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-[0.15em] mt-space-md mb-space-sm"><?= e($catName) ?> <span class="text-outline">· <?= count($items) ?></span></h4>
-          <div class="grid <?= e(product_grid_classes()) ?> gap-space-lg">
+          <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-space-lg">
             <?php foreach ($items as $p): ?>
               <?php product_card($p); ?>
             <?php endforeach; ?>
@@ -243,7 +243,7 @@ render_head();
         </a>
       </div>
 
-      <div class="grid <?= e(product_grid_classes()) ?> gap-space-lg">
+      <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-space-lg">
         <?php foreach ($newProducts as $p): ?>
           <?php product_card($p); ?>
         <?php endforeach; ?>
@@ -281,32 +281,6 @@ render_head();
             Shop Now <span class="material-symbols-outlined text-base">arrow_forward</span>
           </a>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 5. TRUST -->
-  <section class="w-full bg-surface-container py-space-lg">
-    <div class="max-w-[1360px] mx-auto px-margin">
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
-        <?php
-        $trust = [
-            ['verified_user', 'Secure Payments', 'Shop with confidence &mdash; MoMo &amp; Cards', 'text-primary'],
-            ['local_shipping', 'Fast Delivery', 'Across Accra, Kumasi &amp; all Ghana', 'text-secondary'],
-            ['award_star', 'Authentic Products', '100% genuine trusted brands', 'text-primary-container'],
-            ['support_agent', '24/7 Support', "We're here to help anytime", 'text-secondary-fixed-variant'],
-        ];
-        foreach ($trust as [$icon, $h, $sub, $cls]): ?>
-          <div class="flex items-center gap-4 p-4 rounded-xl bg-surface-container-lowest shadow-sm">
-            <div class="w-12 h-12 rounded-lg bg-surface-container-high flex items-center justify-center <?= e($cls) ?> shrink-0">
-              <span class="material-symbols-outlined text-2xl"><?= e($icon) ?></span>
-            </div>
-            <div>
-              <h3 class="font-headline-sm text-headline-sm text-on-surface font-bold"><?= $h ?></h3>
-              <p class="font-body-sm text-body-sm text-on-surface-variant"><?= $sub ?></p>
-            </div>
-          </div>
-        <?php endforeach; ?>
       </div>
     </div>
   </section>

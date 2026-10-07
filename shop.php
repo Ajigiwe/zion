@@ -211,7 +211,7 @@ render_head();
             <a class="inline-block mt-5 px-6 py-3 bg-primary-container text-on-primary font-label-nav text-label-nav font-bold uppercase tracking-wider rounded-lg hover:bg-primary" href="<?= e(url('shop.php')) ?>">Browse everything</a>
           </div>
         <?php else: ?>
-          <div class="grid <?= e(product_grid_classes()) ?> gap-6">
+          <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-6">
             <?php foreach ($products as $p): ?>
               <?php product_card($p); ?>
             <?php endforeach; ?>

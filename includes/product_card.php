@@ -80,7 +80,7 @@ function product_card(array $p): void
         </form>
       </div>
 
-      <div class="p-4 flex flex-col flex-1 gap-3">
+      <div class="p-3 sm:p-4 flex flex-col flex-1 gap-2 sm:gap-3">
         <div>
           <div class="flex items-center justify-between text-body-sm mb-1 gap-2">
             <span class="font-label-tag text-label-tag text-secondary uppercase tracking-widest font-semibold truncate"><?= e($p['brand_label']) ?></span>

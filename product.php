@@ -560,7 +560,7 @@ if ($p['department'] === 'lingerie') {
           <span>Explore Collection</span><span class="material-symbols-outlined text-base">arrow_forward</span>
         </a>
       </div>
-      <div class="grid <?= e(product_grid_classes()) ?> gap-space-md mb-space-xl">
+      <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-space-md mb-space-xl">
         <?php foreach ($related as $r): ?>
           <?php product_card($r); ?>
         <?php endforeach; ?>

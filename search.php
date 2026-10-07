@@ -63,7 +63,7 @@ render_head();
         </div>
       </div>
     <?php else: ?>
-      <div class="grid <?= e(product_grid_classes()) ?> gap-space-lg">
+      <div class="product-grid grid <?= e(product_grid_classes()) ?> gap-3 sm:gap-space-lg">
         <?php foreach ($products as $p): ?>
           <?php product_card($p); ?>
         <?php endforeach; ?>
