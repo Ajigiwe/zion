@@ -17,7 +17,7 @@ const TEXT_KEYS = [
     'contact_email', 'contact_phone', 'contact_whatsapp', 'contact_hours', 'contact_response',
     'address_line', 'address_city', 'address_country', 'map_lat', 'map_lng',
     'social_instagram', 'social_tiktok', 'social_facebook', 'social_youtube',
-    'grid_columns', 'card_ratio', 'home_new',
+    'grid_columns', 'card_ratio', 'home_new', 'featured_per_cat', 'featured_rotate_hours',
     'shipping_metro_tag', 'shipping_metro_title', 'shipping_metro_desc', 'shipping_metro_fee',
     'shipping_regional_tag', 'shipping_regional_title', 'shipping_regional_desc', 'shipping_regional_fee',
     'shipping_pickup_tag', 'shipping_pickup_title', 'shipping_pickup_desc', 'shipping_pickup_fee',
@@ -83,6 +83,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $save['grid_columns'] = in_array($save['grid_columns'] ?? '', ['2', '3', '4'], true) ? (string) $save['grid_columns'] : '4';
     $save['card_ratio']   = in_array($save['card_ratio'] ?? '', ['auto', 'portrait', 'square', 'landscape'], true) ? (string) $save['card_ratio'] : 'auto';
     $save['home_new'] = in_array($save['home_new'] ?? '', ['0', '4', '8', '12'], true) ? (string) $save['home_new'] : '8';
+    $featN = (int) ($save['featured_per_cat'] ?? 0);
+    $save['featured_per_cat'] = (string) ($featN > 0 ? max(1, min(20, $featN)) : 10);
+    $featH = (int) ($save['featured_rotate_hours'] ?? 0);
+    $save['featured_rotate_hours'] = (string) ($featH > 0 ? max(1, min(72, $featH)) : 10);
 
     if (($save['site_name'] ?? '') === '') {
         $errors[] = 'The site name cannot be empty.';
@@ -645,6 +649,20 @@ admin_head('Settings', 'settings');
             <?php endforeach; ?>
           </select>
           <span class="font-body-sm text-body-sm text-on-surface-variant">Newest active products by date added. Hidden removes the section.</span>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Featured per category</span>
+          <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                 type="number" name="featured_per_cat" min="1" max="20" step="1" value="<?= (int) featured_per_cat_count() ?>"/>
+          <span class="font-body-sm text-body-sm text-on-surface-variant">Random picks per top-level category on the homepage (1&ndash;20).</span>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Featured rotation (hours)</span>
+          <input class="h-11 px-3 border border-outline-variant rounded font-body-sm text-body-sm focus:border-primary outline-none"
+                 type="number" name="featured_rotate_hours" min="1" max="72" step="1" value="<?= (int) featured_rotate_hours() ?>"/>
+          <span class="font-body-sm text-body-sm text-on-surface-variant">Homepage picks reshuffle every so many hours (1&ndash;72).</span>
         </label>
       </div>
     </section>

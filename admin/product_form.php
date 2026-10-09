@@ -21,6 +21,16 @@ $formNewBrand    = '';
 $formNewCategory = '';
 $notes = [];
 
+$galleryRows = [];
+if ($id > 0) {
+    foreach (db_all('SELECT url FROM product_images WHERE product_id = ? ORDER BY sort_order, id', [$id]) as $gr) {
+        $u = trim((string) ($gr['url'] ?? ''));
+        if ($u !== '' && !in_array($u, $galleryRows, true)) {
+            $galleryRows[] = $u;
+        }
+    }
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     csrf_check();
 
@@ -42,8 +52,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         'description'=> trim((string) ($_POST['description'] ?? '')),
         'image'      => trim((string) ($_POST['image_url'] ?? '')),
         'active'     => isset($_POST['is_active']) ? 1 : 0,
-        'featured'   => isset($_POST['is_featured']) ? 1 : 0,
     ];
+    $galleryUrls = [];
+    foreach ((array) ($_POST['gallery_urls'] ?? []) as $u) {
+        $u = trim((string) $u);
+        if ($u === '' || strlen($u) > 500 || in_array($u, $galleryUrls, true)) {
+            continue;
+        }
+        $galleryUrls[] = $u;
+        if (count($galleryUrls) === 12) {
+            break;
+        }
+    }
+    if ($f['image'] !== '') {
+        $galleryUrls = [$f['image'], ...array_values(array_filter($galleryUrls, static fn($u) => $u !== $f['image']))];
+        if (count($galleryUrls) > 12) {
+            $galleryUrls = array_slice($galleryUrls, 0, 12);
+        }
+    }
     $formNewBrand    = $f['new_brand'];
     $formNewCategory = $f['new_category'];
 
@@ -95,10 +121,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         }
 
         $compare = $f['compare'] !== '' ? (float) $f['compare'] : null;
+        // The homepage no longer uses manual featuring (rotating picks instead),
+        // so the flag is preserved untouched - the checkbox is gone from the form.
+        $featFlag = (int) ($product['is_featured'] ?? 0);
         $params = [
             $f['sku'], $slug, $f['category'] ?: null, $f['department'], $f['name'], $brandId, $brandLabel,
             $f['short'], $f['description'], $f['price'], $compare, $f['stock'],
-            $f['active'], $f['featured'], $f['badge'], $f['stock_label'], $f['image'],
+            $f['active'], $featFlag, $f['badge'], $f['stock_label'], $f['image'],
         ];
         if ($id > 0) {
             $sql = 'UPDATE products SET sku=?, slug=?, category_id=?, department=?, name=?, brand_id=?, brand_label=?,
@@ -116,27 +145,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             $newId = (int) db_val('SELECT id FROM products WHERE sku = ?', [$f['sku']], 0);
         }
 
-        // Keep the gallery in step with the main image: the saved image always
-        // leads the strip (added when missing, moved up when already present).
-        $img = $f['image'];
-        if ($img !== '') {
-            $rows = db_all('SELECT id, url FROM product_images WHERE product_id = ? ORDER BY sort_order, id', [$newId]);
-            $match = null;
-            foreach ($rows as $row) {
-                if ((string) $row['url'] === $img) {
-                    $match = $row;
-                    break;
-                }
-            }
-            if ($match !== null) {
-                db_exec('UPDATE product_images SET sort_order = sort_order + 100 WHERE product_id = ?', [$newId]);
-                db_exec('UPDATE product_images SET sort_order = 1 WHERE id = ?', [$match['id']]);
-            } elseif ($rows !== []) {
-                db_exec('UPDATE product_images SET url = ? WHERE id = ?', [$img, $rows[0]['id']]);
-            } else {
-                db_exec('INSERT INTO product_images (product_id, url, alt, sort_order) VALUES (?,?,?,1)',
-                    [$newId, $img, $f['name']]);
-            }
+        // Gallery: the posted order wins and the main image always leads.
+        // Replacing every row keeps deletes, reorders and additions in step.
+        db_exec('DELETE FROM product_images WHERE product_id = ?', [$newId]);
+        $sort = 1;
+        foreach ($galleryUrls as $u) {
+            db_exec(
+                'INSERT INTO product_images (product_id, url, alt, sort_order) VALUES (?,?,?,?)',
+                [$newId, $u, $f['name'], $sort++]
+            );
         }
 
         // The confirmation travels in the query string: the ajax layer's fetch
@@ -148,11 +165,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         exit;
     }
     // re-render the form with the submitted values
+    $galleryRows = $galleryUrls;
     $product = array_merge($product ?? [], [
         'sku' => $f['sku'], 'slug' => $slug, 'department' => $f['department'], 'category_id' => $f['category'],
         'name' => $f['name'], 'brand_id' => $f['brand_id'], 'price' => $f['price'],
         'compare_at_price' => $compare, 'stock' => $f['stock'], 'is_active' => $f['active'],
-        'is_featured' => $f['featured'], 'badge' => $f['badge'], 'stock_label' => $f['stock_label'],
+        'badge' => $f['badge'], 'stock_label' => $f['stock_label'],
         'short_description' => $f['short'], 'description' => $f['description'], 'image_url' => $f['image'],
         'id' => $id,
     ]);
@@ -275,6 +293,31 @@ admin_head($id > 0 ? 'Edit Product' : 'New Product', 'products');
           'label'  => 'Main image',
           'hint'   => 'JPG, PNG, WebP or GIF up to 8 MB - stored in storage/uploads/ and used as the lead gallery image.',
       ]) ?>
+      <div class="md:col-span-2 flex flex-col gap-2" data-gallery-manager>
+        <span class="font-label-nav text-label-nav text-on-surface-variant uppercase tracking-wider">Gallery images <span class="text-outline normal-case">(up to 12 &mdash; first is the main image)</span></span>
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-2" data-gallery-list>
+          <?php foreach ($galleryRows as $i => $gu): ?>
+            <div class="relative rounded-lg overflow-hidden border border-outline-variant bg-surface-container aspect-square" data-gallery-item>
+              <img class="w-full h-full object-cover" src="<?= e(img_url($gu)) ?>" alt="" loading="lazy"/>
+              <input type="hidden" name="gallery_urls[]" value="<?= e($gu) ?>"/>
+              <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-primary-container text-on-primary font-label-tag text-label-tag uppercase font-bold<?= $i === 0 ? '' : ' hidden' ?>" data-gallery-badge>Main</span>
+              <div class="absolute bottom-1 inset-x-1 flex gap-1">
+                <button type="button" data-gallery-main title="Make main image"
+                        class="flex-1 px-1 py-1 rounded bg-inverse-surface/85 text-surface font-label-tag text-label-tag uppercase hover:bg-primary-container hover:text-on-primary transition-colors">Main</button>
+                <button type="button" data-gallery-remove title="Remove image" aria-label="Remove image"
+                        class="px-2 py-1 rounded bg-inverse-surface/85 text-surface hover:bg-error-container hover:text-on-error-container transition-colors">&times;</button>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+        <label class="flex items-center justify-center gap-2 min-h-11 px-4 border border-dashed border-outline-variant rounded-lg font-label-nav text-label-nav uppercase text-on-surface-variant hover:bg-surface-container cursor-pointer transition-colors">
+          <span class="material-symbols-outlined text-lg">add_photo_alternate</span>
+          Add images (select multiple)
+          <input type="file" class="sr-only" data-gallery-upload multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp"/>
+        </label>
+        <span data-gallery-status class="text-[11px] text-on-surface-variant"></span>
+        <span class="text-[11px] leading-4 text-outline">Uploads go straight to storage/uploads/. Reorder with Main, remove with &times; &mdash; saving applies everything.</span>
+      </div>
     </div>
 
     <label class="flex flex-col gap-1">
@@ -292,9 +335,6 @@ admin_head($id > 0 ? 'Edit Product' : 'New Product', 'products');
     <div class="flex flex-wrap gap-5">
       <label class="flex items-center gap-2 font-body-sm text-body-sm text-on-surface">
         <input type="checkbox" class="accent-primary" name="is_active" <?= (int) ($product['is_active'] ?? 1) ? 'checked' : '' ?>/> Live on the storefront
-      </label>
-      <label class="flex items-center gap-2 font-body-sm text-body-sm text-on-surface">
-        <input type="checkbox" class="accent-primary" name="is_featured" <?= (int) ($product['is_featured'] ?? 0) ? 'checked' : '' ?>/> Feature on the homepage
       </label>
     </div>
 

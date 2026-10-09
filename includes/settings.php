@@ -36,6 +36,10 @@ function settings_defaults(): array
         'card_ratio'    => 'auto',
         'home_new' => '8',
 
+        /* homepage featured rotation (top-level categories) */
+        'featured_per_cat'    => '10',
+        'featured_rotate_hours' => '10',
+
         /* contact details */
         'contact_email'     => 'concierge@ziongroups.com.gh',
         'contact_phone'     => '+233 27 543 9830',
@@ -629,6 +633,56 @@ function card_ratio_classes(?string $department = null): string
 function home_new_count(): int
 {
     return max(0, min(12, (int) setting('home_new')));
+}
+
+/** How many products each homepage featured category section shows (1-20). */
+function featured_per_cat_count(): int
+{
+    $v = (int) setting('featured_per_cat');
+    if ($v <= 0) {
+        $v = (int) (settings_defaults()['featured_per_cat'] ?? 10);
+    }
+    return max(1, min(20, $v));
+}
+
+/** Hours between homepage featured rotations (1-72). */
+function featured_rotate_hours(): int
+{
+    $v = (int) setting('featured_rotate_hours');
+    if ($v <= 0) {
+        $v = (int) (settings_defaults()['featured_rotate_hours'] ?? 10);
+    }
+    return max(1, min(72, $v));
+}
+
+/** Current rotation window: bumps every featured_rotate_hours() hours. */
+function featured_window(): int
+{
+    return (int) floor(time() / (featured_rotate_hours() * 3600));
+}
+
+/**
+ * Deterministically pick up to $n ids from $ids for $salt in the current
+ * rotation window. Same result for every visitor until the window rolls over.
+ *
+ * @param int[] $ids
+ * @return int[]
+ */
+function featured_pick(array $ids, int $n, string $salt): array
+{
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    if ($ids === [] || $n <= 0) {
+        return [];
+    }
+    mt_srand((featured_window() * 1000003) ^ (crc32($salt) & 0x7fffffff));
+    for ($i = count($ids) - 1; $i > 0; $i--) {
+        $j = mt_rand(0, $i);
+        $tmp = $ids[$i];
+        $ids[$i] = $ids[$j];
+        $ids[$j] = $tmp;
+    }
+    mt_srand((int) (microtime(true) * 1000000) ^ getmypid());
+    return array_slice($ids, 0, $n);
 }
 
 /* ------------------------------------------------ contact + location */

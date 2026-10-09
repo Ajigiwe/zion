@@ -211,11 +211,13 @@ function admin_head(string $title, string $active = ''): void
 
   <div id="navBackdrop"></div>
 
-  <main class="flex-1 min-w-0 p-space-md" data-ajax-out>
+  <main class="flex-1 min-w-0 p-space-md">
+    <?php /* outside [data-ajax-out]: AJAX swaps must never replace this button */ ?>
     <button id="navOpen" type="button"
             class="lg:hidden mb-4 px-4 py-2 inline-flex items-center gap-2 border border-outline-variant rounded-lg font-label-nav text-label-nav uppercase text-on-surface hover:bg-surface-container-lowest transition-colors">
       <span class="material-symbols-outlined text-lg">menu</span> Menu
     </button>
+    <div data-ajax-out>
     <?php foreach (flash_all() as $f): ?>
       <?php $cls = match ($f['type']) {
           'error'   => 'bg-error-container text-on-error-container',
@@ -232,6 +234,7 @@ function admin_head(string $title, string $active = ''): void
 function admin_foot(): void
 {
     ?>
+    </div>
     </main>
   </div>
   <script>
@@ -258,8 +261,7 @@ function admin_foot(): void
         icon();
       }
 
-      // Delegated: #navOpen lives inside [data-ajax-out] and is replaced on
-      // every form[data-ajax] save, which would drop direct listeners.
+      // Delegated so AJAX swaps of [data-ajax-out] can never drop the wiring.
       document.addEventListener('click', function (e) {
         if (!e.target || !e.target.closest) { return; }
         var body = document.body;
@@ -280,6 +282,12 @@ function admin_foot(): void
         }
         if (e.target.closest('#navBackdrop')) {
           body.classList.remove('nav-open');
+          return;
+        }
+        // Tapping a sidebar link on mobile closes the drawer straight away,
+        // so it can never look stuck while the next page loads.
+        if (!mq.matches && e.target.closest('#admin-nav a')) {
+          body.classList.remove('nav-open');
         }
       });
       document.addEventListener('keydown', function (e) {
@@ -294,7 +302,7 @@ function admin_foot(): void
     })();
   </script>
   <script>window.ZION_UPLOAD = <?= json_encode(url('admin/upload.php'), JSON_UNESCAPED_SLASHES) ?>;</script>
-  <script src="<?= e(url('assets/upload.js')) ?>"></script>
+  <script src="<?= e(url('assets/upload.js') . '?v=' . ((int) @filemtime(__DIR__ . '/../assets/upload.js'))) ?>"></script>
   <script src="<?= e(url('assets/ajax.js')) ?>"></script>
 </body>
 </html>

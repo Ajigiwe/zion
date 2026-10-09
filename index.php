@@ -23,17 +23,68 @@ set_jsonld([
     ],
 ]);
 
-$featuredByDept = [];
-foreach (['lingerie', 'instruments'] as $dept) {
-    $featuredByDept[$dept] = db_all(
-        'SELECT p.*, c.name AS category_name, c.slug AS category_slug
-         FROM products p LEFT JOIN categories c ON c.id = p.category_id
-         WHERE p.is_active = 1 AND p.is_featured = 1 AND p.department = ?
-         ORDER BY COALESCE(c.sort_order, 9999), p.rating DESC, p.id ASC LIMIT 20',
-        [$dept]
-    );
+$featN = featured_per_cat_count();
+$catTree = db_all('SELECT id, parent_id, name, slug FROM categories WHERE is_active = 1 ORDER BY sort_order, name');
+$childOf = [];
+$topCats = [];
+foreach ($catTree as $c) {
+    if ($c['parent_id'] === null) {
+        $topCats[] = $c;
+    } else {
+        $childOf[(int) $c['parent_id']][] = (int) $c['id'];
+    }
 }
-$hasFeatured = ($featuredByDept['lingerie'] !== [] || $featuredByDept['instruments'] !== []);
+$prodByCat = [];
+foreach (db_all('SELECT id, category_id FROM products WHERE is_active = 1') as $r) {
+    if ($r['category_id'] === null) {
+        continue;
+    }
+    $prodByCat[(int) $r['category_id']][] = (int) $r['id'];
+}
+$featuredSections = [];
+foreach ($topCats as $tc) {
+    $tid = (int) $tc['id'];
+    $desc = [$tid];
+    $queue = [$tid];
+    while ($queue !== []) {
+        $cur = array_pop($queue);
+        foreach ($childOf[$cur] ?? [] as $kid) {
+            $desc[] = $kid;
+            $queue[] = $kid;
+        }
+    }
+    $pool = [];
+    foreach ($desc as $d) {
+        foreach ($prodByCat[$d] ?? [] as $pid) {
+            $pool[] = $pid;
+        }
+    }
+    if ($pool === []) {
+        continue;
+    }
+    $picked = featured_pick($pool, $featN, (string) $tc['slug']);
+    if ($picked === []) {
+        continue;
+    }
+    $rows = db_all(
+        'SELECT * FROM products WHERE id IN (' . implode(',', array_fill(0, count($picked), '?')) . ')',
+        $picked
+    );
+    $byId = [];
+    foreach ($rows as $r) {
+        $byId[(int) $r['id']] = $r;
+    }
+    $items = [];
+    foreach ($picked as $pid) {
+        if (isset($byId[$pid])) {
+            $items[] = $byId[$pid];
+        }
+    }
+    if ($items !== []) {
+        $featuredSections[] = ['cat' => $tc, 'items' => $items];
+    }
+}
+$hasFeatured = $featuredSections !== [];
 
 $homeNew = home_new_count();
 $newProducts = $homeNew > 0 ? db_all(
@@ -181,7 +232,7 @@ render_head();
     </div>
   </section>
 
-  <!-- 3. FEATURED PRODUCTS (up to 20 per department) -->
+  <!-- 3. FEATURED PRODUCTS (rotating picks per top-level category) -->
   <?php if ($hasFeatured): ?>
   <section class="w-full bg-surface-container-low py-space-xl">
     <div class="max-w-[1360px] mx-auto px-margin">
@@ -198,16 +249,15 @@ render_head();
         </a>
       </div>
 
-      <?php foreach (['lingerie' => 'Featured Lingerie', 'instruments' => 'Featured Instruments & Audio'] as $dept => $deptTitle): ?>
-        <?php if ($featuredByDept[$dept] === []) { continue; } ?>
+      <?php foreach ($featuredSections as $section): ?>
         <div class="flex items-center justify-between mt-space-lg mb-space-md first:mt-0">
-          <h3 class="font-headline-md text-headline-md text-on-surface font-bold"><?= e($deptTitle) ?></h3>
-          <a class="inline-flex items-center gap-1 font-label-nav text-label-nav text-primary font-bold uppercase tracking-wider hover:text-primary-container transition-colors" href="<?= e(url('shop.php?dept=' . $dept)) ?>">
-            Shop <?= $dept === 'lingerie' ? 'Lingerie' : 'Music & Audio' ?> <span class="material-symbols-outlined text-base">arrow_forward</span>
+          <h3 class="font-headline-md text-headline-md text-on-surface font-bold"><?= e($section['cat']['name']) ?></h3>
+          <a class="inline-flex items-center gap-1 font-label-nav text-label-nav text-primary font-bold uppercase tracking-wider hover:text-primary-container transition-colors" href="<?= e(url('category.php?slug=' . urlencode($section['cat']['slug']))) ?>">
+            Shop <?= e($section['cat']['name']) ?> <span class="material-symbols-outlined text-base">arrow_forward</span>
           </a>
         </div>
         <div class="product-grid grid grid-cols-2 gap-3 sm:gap-space-lg">
-          <?php foreach ($featuredByDept[$dept] as $p): ?>
+          <?php foreach ($section['items'] as $p): ?>
             <?php product_card($p); ?>
           <?php endforeach; ?>
         </div>
