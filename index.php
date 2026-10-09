@@ -84,7 +84,28 @@ foreach ($topCats as $tc) {
         $featuredSections[] = ['cat' => $tc, 'items' => $items];
     }
 }
-$hasFeatured = $featuredSections !== [];
+// Single mixed grid: flatten every category's picks and shuffle again in the
+// same rotation window, so the section reads as one varied shelf.
+$mixedIds = [];
+foreach ($featuredSections as $section) {
+    foreach ($section['items'] as $p) {
+        $mixedIds[] = (int) $p['id'];
+    }
+}
+$mixedIds = featured_pick($mixedIds, count($mixedIds), 'mixed');
+$byId = [];
+foreach ($featuredSections as $section) {
+    foreach ($section['items'] as $p) {
+        $byId[(int) $p['id']] = $p;
+    }
+}
+$featuredMixed = [];
+foreach ($mixedIds as $pid) {
+    if (isset($byId[$pid])) {
+        $featuredMixed[] = $byId[$pid];
+    }
+}
+$hasFeatured = $featuredMixed !== [];
 
 $homeNew = home_new_count();
 $newProducts = $homeNew > 0 ? db_all(
@@ -249,19 +270,11 @@ render_head();
         </a>
       </div>
 
-      <?php foreach ($featuredSections as $section): ?>
-        <div class="flex items-center justify-between mt-space-lg mb-space-md first:mt-0">
-          <h3 class="font-headline-md text-headline-md text-on-surface font-bold"><?= e($section['cat']['name']) ?></h3>
-          <a class="inline-flex items-center gap-1 font-label-nav text-label-nav text-primary font-bold uppercase tracking-wider hover:text-primary-container transition-colors" href="<?= e(url('category.php?slug=' . urlencode($section['cat']['slug']))) ?>">
-            Shop <?= e($section['cat']['name']) ?> <span class="material-symbols-outlined text-base">arrow_forward</span>
-          </a>
-        </div>
-        <div class="product-grid grid grid-cols-2 gap-3 sm:gap-space-lg">
-          <?php foreach ($section['items'] as $p): ?>
-            <?php product_card($p); ?>
-          <?php endforeach; ?>
-        </div>
-      <?php endforeach; ?>
+      <div class="product-grid grid grid-cols-2 gap-3 sm:gap-space-lg">
+        <?php foreach ($featuredMixed as $p): ?>
+          <?php product_card($p); ?>
+        <?php endforeach; ?>
+      </div>
     </div>
   </section>
   <?php endif; ?>
