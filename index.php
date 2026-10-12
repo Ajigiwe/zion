@@ -270,7 +270,7 @@ render_head();
         </a>
       </div>
 
-      <div class="product-grid grid grid-cols-2 gap-3 sm:gap-space-lg">
+      <div class="product-grid grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-space-lg">
         <?php foreach ($featuredMixed as $p): ?>
           <?php product_card($p); ?>
         <?php endforeach; ?>
