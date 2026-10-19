@@ -3,6 +3,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/product_card.php';
 
+// Return stock held by Paystack orders nobody finished paying for. The helper
+// is stamp-file limited, so this costs one stat() on almost every request.
+release_abandoned_paystack_orders();
+
 set_title('Express Yourself | Zion Groups of Companies | Lingerie & Instruments, Ghana');
 set_meta(
     'Zion Groups of Companies - luxury lingerie, professional musical instruments, pro audio and church worship equipment in Tarkwa, Ghana. '

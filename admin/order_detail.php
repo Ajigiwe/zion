@@ -39,11 +39,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             if ($status === 'delivered' && $order['payment_channel'] === 'cod') {
                 db_exec('UPDATE orders SET payment_status = "paid" WHERE id = ?', [$id]);
             }
-            if ($status === 'cancelled' && $order['payment_status'] === 'paid') {
-                foreach (db_all('SELECT product_id, qty FROM order_items WHERE order_id = ?', [$id]) as $it) {
-                    db_exec('UPDATE products SET stock = stock + ? WHERE id = ?', [(int) $it['qty'], (int) $it['product_id']]);
+            if ($status === 'cancelled') {
+                // Stock was taken when the order was created - paid or not - so
+                // hand it back exactly once. order_release_stock() writes the
+                // 'stock' marker event, which is what keeps a second cancel (or
+                // the abandoned-payment sweep) from returning it twice.
+                db_tx(static function (PDO $pdo) use ($id): void {
+                    order_release_stock($pdo, $id, 'Stock returned to inventory - order cancelled');
+                });
+                if ($order['payment_status'] === 'paid') {
+                    db_exec('UPDATE orders SET payment_status = "refunded" WHERE id = ?', [$id]);
                 }
-                db_exec('UPDATE orders SET payment_status = "refunded" WHERE id = ?', [$id]);
             }
             flash_set('success', 'Order ' . $order['order_no'] . ' moved to ' . $status . '.');
         } else {

@@ -99,6 +99,23 @@ You can also pass Paystack keys directly in command line:
 PAYSTACK_PUBLIC_KEY=pk_live_xxx PAYSTACK_SECRET_KEY=sk_live_xxx bash sync_deploy.sh
 ```
 
+### Browser deploys (optional)
+
+`sync_deploy.php` (and its alias `deploy.php`) can also run from the browser -
+the page it prints lets you pull, see the commit diff and set Paystack keys.
+Because that endpoint executes `git` and rewrites `.env`, it requires a secret
+from `.env`:
+
+```bash
+php -r "echo bin2hex(random_bytes(32));"   # generate one
+# then add to .env:   DEPLOY_TOKEN=<that value>
+```
+
+Open `/sync_deploy.php?token=<DEPLOY_TOKEN>`; the form carries the token from
+there on. With no `DEPLOY_TOKEN` set the endpoint answers **403** and CLI
+deploys are the only way in - which is the right default for a shop. A browser
+can only ever deploy the canonical repository, never an arbitrary one.
+
 **Rules of the road**
 
 - Never edit files on the server - change them here and push, or the next

@@ -217,6 +217,138 @@ function require_admin(): void
     exit;
 }
 
+/* ------------------------------------------------------- login throttle */
+
+const LOGIN_MAX_ATTEMPTS = 5;      // failures per identity per window
+const LOGIN_LOCK_SECONDS = 900;    // 15 minutes
+
+/**
+ * Create the attempt counter table on first use.
+ *
+ * The app ships no migration runner, so the table is ensured lazily - that way
+ * an existing install picks up the protection without an import step. Failures
+ * are logged and the throttle then fails *open* rather than blocking sign-in.
+ */
+function login_throttle_table(): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $ready = true;
+    try {
+        db_exec(
+            'CREATE TABLE IF NOT EXISTS `login_attempts` (
+               `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+               `scope`          VARCHAR(16)  NOT NULL,
+               `ident`          VARCHAR(160) NOT NULL,
+               `attempts`       INT UNSIGNED NOT NULL DEFAULT 1,
+               `last_attempt_at` DATETIME     NOT NULL,
+               PRIMARY KEY (`id`),
+               UNIQUE KEY `uq_login_attempts_scope_ident` (`scope`, `ident`)
+             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+    } catch (Throwable $e) {
+        error_log('login_throttle: could not ensure login_attempts - ' . $e->getMessage());
+    }
+}
+
+/**
+ * [scope, ident] pairs to count for a sign-in attempt: the submitted identity
+ * under the caller's scope, plus the client IP under a shared scope so a locked
+ * address cannot simply switch to the other login form.
+ *
+ * @return list<array{0: string, 1: string}>
+ */
+function login_throttle_idents(string $scope, string $identity): array
+{
+    $out  = [];
+    $id   = mb_strtolower(trim($identity));
+    $ip   = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    if ($id !== '') {
+        $out[] = [$scope, mb_substr($id, 0, 160)];
+    }
+    if ($ip !== '') {
+        $out[] = ['shared', mb_substr('ip:' . $ip, 0, 160)];
+    }
+    return $out;
+}
+
+/** Why this sign-in must be refused right now, or null when it may proceed. */
+function login_throttle_block(string $scope, string $identity): ?string
+{
+    // Every timestamp comparison stays in SQL: PHP and MySQL often disagree
+    // about the display timezone (they did on XAMPP - 9 hours apart), and a
+    // PHP-side "has the window expired?" would then disable the lockout.
+    foreach (login_throttle_idents($scope, $identity) as [$s, $ident]) {
+        try {
+            $row = db_one(
+                'SELECT attempts, TIMESTAMPDIFF(SECOND, last_attempt_at, NOW()) AS elapsed
+                   FROM login_attempts
+                  WHERE scope = ? AND ident = ?
+                    AND last_attempt_at > NOW() - INTERVAL ' . LOGIN_LOCK_SECONDS . ' SECOND',
+                [$s, $ident]
+            );
+        } catch (Throwable $e) {
+            error_log('login_throttle: ' . $e->getMessage());
+            return null;
+        }
+        if ($row === null || (int) $row['attempts'] < LOGIN_MAX_ATTEMPTS) {
+            continue;
+        }
+        $wait   = LOGIN_LOCK_SECONDS - (int) $row['elapsed'];   // seconds still to serve
+        $mins   = max(1, (int) ceil($wait / 60));
+        return 'Too many sign-in attempts. Please wait about '
+            . $mins . ' minute' . ($mins === 1 ? '' : 's') . ' and try again.';
+    }
+    return null;
+}
+
+/** Record one failed attempt against every identity for this sign-in. */
+function login_throttle_fail(string $scope, string $identity): void
+{
+    login_throttle_table();
+    foreach (login_throttle_idents($scope, $identity) as [$s, $ident]) {
+        try {
+            db_exec(
+                'INSERT INTO login_attempts (scope, ident, attempts, last_attempt_at)
+                 VALUES (?, ?, 1, NOW())
+                 ON DUPLICATE KEY UPDATE
+                   attempts       = IF(last_attempt_at < NOW() - INTERVAL ' . LOGIN_LOCK_SECONDS . ' SECOND, 1, attempts + 1),
+                   last_attempt_at = NOW()',
+                [$s, $ident]
+            );
+        } catch (Throwable $e) {
+            error_log('login_throttle: ' . $e->getMessage());
+        }
+    }
+}
+
+/** Forget the failures for this identity once the password was right. */
+function login_throttle_clear(string $scope, string $identity): void
+{
+    login_throttle_table();
+    $pairs = login_throttle_idents($scope, $identity);
+    if ($pairs === []) {
+        return;
+    }
+    try {
+        $placeholders = [];
+        $params = [];
+        foreach ($pairs as [$s, $ident]) {
+            $placeholders[] = '(?, ?)';
+            $params[] = $s;
+            $params[] = $ident;
+        }
+        db_exec(
+            'DELETE FROM login_attempts WHERE (scope, ident) IN (' . implode(', ', $placeholders) . ')',
+            $params
+        );
+    } catch (Throwable $e) {
+        error_log('login_throttle: ' . $e->getMessage());
+    }
+}
+
 /* ----------------------------------------------------------- cart token */
 
 function cart_token(): string
@@ -309,9 +441,22 @@ function cart_update(int $cartId, int $qty): void
         db_exec("DELETE FROM cart_items WHERE id = ? AND $where", array_merge([$cartId], $params));
         return;
     }
+    // Clamp to what is actually on the shelf (the row may have been adjusted
+    // by another shopper since it was added), never past 99 a line.
+    $stock = db_val(
+        "SELECT p.stock FROM cart_items JOIN products p ON p.id = cart_items.product_id
+          WHERE cart_items.id = ? AND $where",
+        array_merge([$cartId], $params),
+        99
+    );
+    $qty = min(99, $qty, max(0, (int) $stock));
+    if ($qty <= 0) {
+        db_exec("DELETE FROM cart_items WHERE id = ? AND $where", array_merge([$cartId], $params));
+        return;
+    }
     db_exec(
         "UPDATE cart_items SET qty = ? WHERE id = ? AND $where",
-        array_merge([min(99, $qty), $cartId], $params)
+        array_merge([$qty, $cartId], $params)
     );
 }
 
@@ -395,6 +540,166 @@ function next_order_no(): string
         $seq++;
     } while (db_one('SELECT id FROM orders WHERE order_no = ?', [$no]) !== null);
     return $no;
+}
+
+/* ------------------------------------------------------ stock reservation */
+
+/** Unpaid Paystack orders give their stock back after this many minutes. */
+const ABANDONED_ORDER_MINUTES = 60;
+
+/**
+ * Marker event meaning "this order's stock is back on the shelf".
+ *
+ * The `stock` event is what makes every release idempotent: an order's
+ * inventory can be returned exactly once, no matter how many code paths
+ * (admin cancel, abandoned-payment sweeper) get there.
+ */
+function order_stock_released(int $orderId): bool
+{
+    return db_one(
+        "SELECT id FROM order_events WHERE order_id = ? AND status = 'stock' LIMIT 1",
+        [$orderId]
+    ) !== null;
+}
+
+/**
+ * Take stock for the given items inside an open transaction.
+ *
+ * Product rows are locked for update and the decrement only applies when the
+ * stock is really there, so two concurrent checkouts cannot both sell the last
+ * unit and a short stock level is never silently masked.
+ *
+ * @param array<int, array{product_id: int, qty: int, label: string}> $items
+ * @throws DomainException when an item is missing or short.
+ */
+function order_reserve_stock(PDO $pdo, array $items): void
+{
+    if ($items === []) {
+        return;
+    }
+    // Stable lock order keeps two simultaneous checkouts from deadlocking.
+    usort($items, static fn (array $a, array $b): int => $a['product_id'] <=> $b['product_id']);
+
+    $read  = $pdo->prepare('SELECT name, stock FROM products WHERE id = ? FOR UPDATE');
+    $write = $pdo->prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?');
+
+    foreach ($items as $item) {
+        $pid = (int) $item['product_id'];
+        $qty = max(1, (int) $item['qty']);
+        $label = (string) ($item['label'] ?? 'An item in your bag');
+
+        $read->execute([$pid]);
+        $row = $read->fetch();
+        if ($row === false) {
+            throw new DomainException('"' . $label . '" is no longer available - please remove it from your bag.');
+        }
+        $available = (int) $row['stock'];
+        if ($available < $qty) {
+            throw new DomainException(
+                $available > 0
+                    ? 'Only ' . $available . ' left of "' . $row['name'] . '" - please reduce the quantity in your bag.'
+                    : '"' . $row['name'] . '" is out of stock - please remove it from your bag.'
+            );
+        }
+
+        $write->execute([$qty, $pid, $qty]);
+        if ($write->rowCount() === 0) {
+            // Somebody took the last unit between the read and the write.
+            throw new DomainException('"' . $row['name'] . '" sold out while you were checking out.');
+        }
+    }
+}
+
+/**
+ * Put an order's items back on the shelf and record the marker event.
+ * Call inside a transaction; a no-op when the stock was already returned.
+ *
+ * @return bool true when stock was actually returned.
+ */
+function order_release_stock(PDO $pdo, int $orderId, string $reason = 'Stock returned to inventory'): bool
+{
+    if (order_stock_released($orderId)) {
+        return false;
+    }
+    $items = $pdo->prepare('SELECT product_id, product_name, qty FROM order_items WHERE order_id = ?');
+    $items->execute([$orderId]);
+    $giveBack = $pdo->prepare('UPDATE products SET stock = stock + ? WHERE id = ?');
+    while ($row = $items->fetch()) {
+        $giveBack->execute([(int) $row['qty'], (int) $row['product_id']]);
+    }
+
+    $ev = $pdo->prepare('INSERT INTO order_events (order_id, status, note) VALUES (?,?,?)');
+    $ev->execute([$orderId, 'stock', $reason]);
+    return true;
+}
+
+/**
+ * Give stock back from Paystack orders nobody ever paid for.
+ *
+ * Stock is reserved when an order is created so the last unit cannot be sold
+ * twice, but a customer who never finishes at the gateway would otherwise hold
+ * it forever. Runs from page loads rather than a cron, so it is rate limited by
+ * a stamp file and processes a bounded batch.
+ *
+ * @return int number of orders released.
+ */
+function release_abandoned_paystack_orders(): int
+{
+    $stampFile = __DIR__ . '/storage/logs/last-stock-release';
+    $last = is_file($stampFile) ? (int) @file_get_contents($stampFile) : 0;
+    if (time() - $last < 600) {
+        return 0;
+    }
+    @mkdir(dirname($stampFile), 0775, true);
+    @file_put_contents($stampFile, (string) time());   // stamp first: never spin on a failing sweep
+
+    try {
+        $stale = db_all(
+            "SELECT id, order_no FROM orders
+              WHERE payment_channel = 'paystack'
+                AND payment_status = 'pending'
+                AND status = 'pending'
+                AND created_at < NOW() - INTERVAL " . ABANDONED_ORDER_MINUTES . " MINUTE
+              ORDER BY id
+              LIMIT 50"
+        );
+    } catch (Throwable $e) {
+        error_log('abandoned orders: ' . $e->getMessage());
+        return 0;
+    }
+
+    $released = 0;
+    foreach ($stale as $staleOrder) {
+        $orderId = (int) $staleOrder['id'];
+        $note    = 'Payment not received within ' . ABANDONED_ORDER_MINUTES . ' minutes - stock returned to inventory';
+        try {
+            $did = db_tx(function (PDO $pdo) use ($orderId, $staleOrder, $note): bool {
+                // Re-read under lock: payment may have landed since the select.
+                $cur = db_one(
+                    'SELECT payment_status, status FROM orders WHERE id = ? FOR UPDATE',
+                    [$orderId]
+                );
+                if ($cur === null || $cur['payment_status'] !== 'pending' || $cur['status'] !== 'pending') {
+                    return false;
+                }
+                if (!order_release_stock($pdo, $orderId, $note)) {
+                    return false;
+                }
+                db_exec(
+                    'UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?',
+                    ['cancelled', $orderId]
+                );
+                error_log('abandoned order released: ' . $staleOrder['order_no']);
+                return true;
+            });
+            if ($did) {
+                $released++;
+            }
+        } catch (Throwable $e) {
+            error_log('abandoned order ' . $staleOrder['order_no'] . ': ' . $e->getMessage());
+        }
+    }
+    return $released;
 }
 
 /** Shipping method preset from the region chosen at checkout. */
@@ -666,5 +971,77 @@ function paystack_api_request(string $endpoint, string $method = 'GET', array $d
         return ['ok' => false, 'message' => $json['message'] ?? 'Paystack error'];
     }
     return ['ok' => true, 'data' => $json['data'] ?? []];
+}
+
+/**
+ * Verify a Paystack transaction against a server-computed order total.
+ *
+ * A "success" flag on its own is not proof that the customer paid what the
+ * order costs - the inline popup takes the amount from the browser. So this
+ * also checks amount, currency, and that the reference has not been booked
+ * against another order already.
+ *
+ * @param string      $reference     Reference reported by Paystack.
+ * @param float       $expectedTotal Server-side total for the order (GH₵).
+ * @param string|null $ownOrderNo    Order this reference belongs to; pass null
+ *                                   before the order row exists (checkout).
+ * @return array{ok: bool, message?: string, data?: array}
+ */
+function paystack_verify_payment(string $reference, float $expectedTotal, ?string $ownOrderNo = null): array
+{
+    $verify = paystack_api_request('transaction/verify/' . urlencode($reference));
+    if (!$verify['ok']) {
+        return ['ok' => false, 'message' => $verify['message'] ?? 'Payment could not be verified.'];
+    }
+
+    $data = is_array($verify['data'] ?? null) ? $verify['data'] : [];
+    if (($data['status'] ?? '') !== 'success') {
+        return [
+            'ok'      => false,
+            'message' => (string) ($data['gateway_response'] ?? 'Payment was not successful.'),
+        ];
+    }
+
+    // One reference, one order - a verified payment must not be replayed.
+    $sql    = 'SELECT order_no FROM orders WHERE payment_reference = ?';
+    $params = [$reference];
+    if ($ownOrderNo !== null && $ownOrderNo !== '') {
+        $sql .= ' AND order_no <> ?';
+        $params[] = $ownOrderNo;
+    }
+    if (db_one($sql . ' LIMIT 1', $params) !== null) {
+        return ['ok' => false, 'message' => 'That payment reference has already been used.'];
+    }
+
+    $expected = (int) round($expectedTotal * 100);
+    $paid     = (int) ($data['amount'] ?? -1);
+    // 2 pesewas of slack: checkout.js rounds the same cart total in float land.
+    if ($paid < $expected - 2 || $paid > $expected + 2) {
+        return [
+            'ok'      => false,
+            'message' => sprintf(
+                'Payment amount does not match this order (expected GH₵%.2f, gateway reports GH₵%.2f).',
+                $expectedTotal,
+                $paid / 100
+            ),
+        ];
+    }
+
+    if (strtoupper((string) ($data['currency'] ?? '')) !== 'GHS') {
+        return ['ok' => false, 'message' => 'Payment currency mismatch.'];
+    }
+
+    return ['ok' => true, 'data' => $data];
+}
+
+/**
+ * May the simulated (key-less) Paystack flow mark an order paid?
+ *
+ * Never in production: a missing key there is a misconfiguration, not a demo,
+ * and silently confirming orders would ship goods for free.
+ */
+function paystack_demo_allowed(): bool
+{
+    return APP_ENV !== 'production';
 }
 

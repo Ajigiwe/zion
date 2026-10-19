@@ -19,20 +19,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $email    = trim((string) ($_POST['email'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
 
-    $user = db_one('SELECT * FROM users WHERE email = ? AND is_active = 1', [$email]);
-    if ($user === null || !password_verify($password, $user['password_hash'])) {
-        $error = 'That email and password combination does not match our records.';
-    } elseif ($user['role'] === 'admin') {
-        login_user($user);
-        flash_set('success', 'Welcome back, ' . $user['name'] . '.');
-        header('Location: ' . url('admin/index.php'));
-        exit;
+    $blocked = login_throttle_block('customer', $email);
+    if ($blocked !== null) {
+        $error = $blocked;
     } else {
-        login_user($user);
-        flash_set('success', 'Welcome back, ' . $user['name'] . '.');
-        $target = $next !== '' && !str_starts_with($next, 'admin/') ? $next : 'account.php';
-        header('Location: ' . (str_starts_with($target, '/') ? $target : url($target)));
-        exit;
+        $user = db_one('SELECT * FROM users WHERE email = ? AND is_active = 1', [$email]);
+        if ($user === null || !password_verify($password, $user['password_hash'])) {
+            login_throttle_fail('customer', $email);
+            $error = 'That email and password combination does not match our records.';
+        } elseif ($user['role'] === 'admin') {
+            login_throttle_clear('customer', $email);
+            login_user($user);
+            flash_set('success', 'Welcome back, ' . $user['name'] . '.');
+            header('Location: ' . url('admin/index.php'));
+            exit;
+        } else {
+            login_throttle_clear('customer', $email);
+            login_user($user);
+            flash_set('success', 'Welcome back, ' . $user['name'] . '.');
+            $target = $next !== '' && !str_starts_with($next, 'admin/') ? $next : 'account.php';
+            header('Location: ' . (str_starts_with($target, '/') ? $target : url($target)));
+            exit;
+        }
     }
 }
 

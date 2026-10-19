@@ -17,15 +17,25 @@ if ($reference === '') {
     exit;
 }
 
-// 1. Verify transaction with Paystack API
-$verify = paystack_api_request('transaction/verify/' . urlencode($reference));
+// 1. Locate the order first: verification has to be checked against the
+//    server-side total, and a verified payment we cannot place is not ours.
+$order = db_one('SELECT * FROM orders WHERE order_no = ? OR payment_reference = ?', [$reference, $reference]);
 
-if (!$verify['ok'] || ($verify['data']['status'] ?? '') !== 'success') {
-    $msg = $verify['data']['gateway_response'] ?? $verify['message'] ?? 'Payment could not be verified.';
-    
-    // Check if order exists in DB to record failed event
-    $order = db_one('SELECT id, order_no FROM orders WHERE order_no = ? OR payment_reference = ?', [$reference, $reference]);
-    if ($order !== null) {
+if ($order === null) {
+    flash_set('error', 'Order not found for payment reference: ' . $reference);
+    header('Location: ' . url('cart.php'));
+    exit;
+}
+
+// 2. Verify the transaction with Paystack - amount, currency and that this
+//    reference has not been spent on another order already.
+$check = paystack_verify_payment($reference, (float) $order['total'], (string) $order['order_no']);
+
+if (!$check['ok']) {
+    $msg = $check['message'];
+
+    // Record the failure once, so the customer can simply retry payment.
+    if ($order['payment_status'] === 'pending') {
         db_exec(
             'UPDATE orders SET payment_status = ?, updated_at = NOW() WHERE id = ?',
             ['failed', $order['id']]
@@ -41,36 +51,74 @@ if (!$verify['ok'] || ($verify['data']['status'] ?? '') !== 'success') {
     exit;
 }
 
-// 2. Locate order in database
-$data = $verify['data'];
-$orderNo = $data['metadata']['order_no'] ?? $reference;
-$order = db_one('SELECT * FROM orders WHERE order_no = ? OR payment_reference = ?', [$orderNo, $reference]);
+// 3. Mark order as paid and confirmed
+$data         = $check['data'];
+$channelUsed  = (string) ($data['channel'] ?? 'paystack');
+$payRef       = (string) ($data['reference'] ?? $reference);
+$orderId      = (int) $order['id'];
 
-if ($order === null) {
-    flash_set('error', 'Order not found for verified payment reference: ' . $reference);
-    header('Location: ' . url('cart.php'));
+try {
+    $finalStatus = db_tx(function (PDO $pdo) use ($order, $orderId, $channelUsed, $payRef): string {
+        // Lock the order row first: the abandoned-payment sweep must not be
+        // able to return stock between the check below and this payment.
+        $cur = db_one('SELECT id, status, payment_status FROM orders WHERE id = ? FOR UPDATE', [$orderId]);
+        if ($cur === null) {
+            throw new RuntimeException('Order vanished while finalising payment.');
+        }
+
+        $final = 'confirmed';
+
+        // Stock is given back when a Paystack order goes unpaid for too long.
+        // If this one paid late, take it again - or hold the order for staff
+        // rather than confirm something we can no longer ship.
+        if ($cur['status'] === 'cancelled' && order_stock_released($orderId)) {
+            $items = db_all('SELECT product_id, product_name, qty FROM order_items WHERE order_id = ?', [$orderId]);
+            try {
+                order_reserve_stock($pdo, array_map(static fn (array $i): array => [
+                    'product_id' => (int) $i['product_id'],
+                    'qty'        => (int) $i['qty'],
+                    'label'      => (string) $i['product_name'],
+                ], $items));
+                db_exec("DELETE FROM order_events WHERE order_id = ? AND status = 'stock'", [$orderId]);
+            } catch (DomainException $ex) {
+                $final = 'pending';
+                error_log('paid without stock - ' . $order['order_no'] . ': ' . $ex->getMessage());
+            }
+        }
+
+        db_exec(
+            'UPDATE orders SET payment_status = ?, status = ?, payment_channel = ?, payment_reference = ?, updated_at = NOW() WHERE id = ?',
+            ['paid', $final, 'paystack', $payRef, $orderId]
+        );
+        db_exec(
+            'INSERT INTO order_events (order_id, status, note) VALUES (?,?,?)',
+            [
+                $orderId,
+                $final,
+                $final === 'confirmed'
+                    ? 'Payment verified via Paystack (' . ucfirst($channelUsed) . ' - Ref: ' . $payRef . ')'
+                    : 'Payment received but stock is unavailable - manual fulfilment required (Ref: ' . $payRef . ')',
+            ]
+        );
+
+        return $final;
+    });
+} catch (Throwable $ex) {
+    // The payment itself is verified, so never pretend it did not happen.
+    error_log('payment finalise failed - ' . $order['order_no'] . ': ' . $ex->getMessage());
+    flash_set(
+        'error',
+        'Your payment (ref ' . $payRef . ') was received but the order could not be finalised. '
+        . 'Please contact us with that reference and we will complete it manually.'
+    );
+    header('Location: ' . url('checkout.php'));
     exit;
 }
-
-// 3. Mark order as paid and confirmed
-$channelUsed = (string) ($data['channel'] ?? 'paystack');
-$payRef = (string) ($data['reference'] ?? $reference);
-
-db_exec(
-    'UPDATE orders SET payment_status = ?, status = ?, payment_channel = ?, payment_reference = ?, updated_at = NOW() WHERE id = ?',
-    ['paid', 'confirmed', 'paystack', $payRef, $order['id']]
-);
-
-db_exec(
-    'INSERT INTO order_events (order_id, status, note) VALUES (?,?,?)',
-    [$order['id'], 'confirmed', 'Payment verified via Paystack (' . ucfirst($channelUsed) . ' - Ref: ' . $payRef . ')']
-);
 
 // 4. Clear cart & finalize customer session
 cart_clear();
 unset($_SESSION['promo_code']);
 unset($_SESSION['pending_paystack_order']);
-
 if (!isset($_SESSION['my_orders']) || !is_array($_SESSION['my_orders'])) {
     $_SESSION['my_orders'] = [];
 }
@@ -94,6 +142,12 @@ if ($low !== []) {
     }
 }
 
-flash_set('success', 'Payment successful! Order ' . $order['order_no'] . ' is confirmed.');
+flash_set(
+    'success',
+    $finalStatus === 'confirmed'
+        ? 'Payment successful! Order ' . $order['order_no'] . ' is confirmed.'
+        : 'Payment received for order ' . $order['order_no']
+            . ', but the items sold out while you were paying - our team will contact you to arrange the next step.'
+);
 header('Location: ' . url('order_complete.php?no=' . urlencode($order['order_no'])));
 exit;

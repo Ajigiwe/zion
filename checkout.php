@@ -338,7 +338,7 @@ $initTotal = max(0.0, $cart['subtotal'] - $discount + $initShip);
   var freeAt = <?= json_encode((float) setting('free_shipping_threshold', (string) FREE_SHIPPING_THRESHOLD)) ?>;
   var currency = <?= json_encode(CURRENCY) ?>;
   var isPaystackLive = <?= json_encode(is_paystack_configured()) ?>;
-  var paystackPublicKey = <?= json_encode(paystack_public_key()) ?>;
+  var paystackPublicKey = <?= json_encode(paystack_public_key(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES) ?>;
 
   function fmt(v) {
     return currency + ' ' + v.toLocaleString('en-US', {

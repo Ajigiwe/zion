@@ -61,6 +61,12 @@ if ($get('APP_URL') === '') {
     chk('APP_URL', 'PASS', 'set');
 }
 
+// /sync_deploy.php and /deploy.php only run from a browser with this secret.
+$deployToken = $get('DEPLOY_TOKEN', '');
+chk('DEPLOY_TOKEN', 'PASS', $deployToken !== ''
+    ? 'browser deploys enabled (/sync_deploy.php?token=...)'
+    : 'browser deploys disabled - only CLI deploys (php sync_deploy.php) will work');
+
 /* ----------------------------------------------------------- payments ---- */
 $payPub = $get('PAYSTACK_PUBLIC_KEY', '');
 $paySec = $get('PAYSTACK_SECRET_KEY', '');
@@ -158,6 +164,21 @@ if ($pdo !== null) {
             $admins   = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
             chk('catalogue data', $active > 0 ? 'PASS' : 'WARN', "$products products ($active live)");
             chk('admin account', $admins > 0 ? 'PASS' : 'WARN', $admins > 0 ? "$admins admin user(s) exist" : 'no admin user - create one before first login');
+
+            // Sign-in throttling table: created on demand by functions.php, so a
+            // missing row here is only a note for installs that predate it.
+            $hasThrottle = in_array('login_attempts', $present, true);
+            chk('login throttling', $hasThrottle ? 'PASS' : 'WARN',
+                $hasThrottle ? 'login_attempts table present'
+                    : 'login_attempts table absent - it is created automatically on the first sign-in');
+
+            // The seed ships known credentials; say so while they are still live.
+            foreach ($pdo->query("SELECT email, password_hash FROM users WHERE role = 'admin'") as $adminRow) {
+                if (password_verify('Admin123!', (string) $adminRow['password_hash'])) {
+                    chk('admin password', 'WARN', $adminRow['email'] . ' still uses the seeded Admin123! - change it');
+                    break;
+                }
+            }
         }
     } catch (Throwable $e) {
         chk('database queries', 'FAIL', $isCli ? $e->getMessage() : 'server error while reading tables');

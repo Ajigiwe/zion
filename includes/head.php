@@ -43,7 +43,14 @@ $jsonld    = page_jsonld();
   <script src="https://cdn.tailwindcss.com"></script>
   <script id="tailwind-config"><?= tailwind_config_js() ?></script>
   <?php foreach ($jsonld as $block): ?>
-    <script type="application/ld+json"><?= json_encode($block, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?></script>
+    <?php
+    // JSON_HEX_TAG/AMP stop a "</script>" (or "&") inside admin-entered content
+    // from breaking out of this block - see product.php's inline JSON for the
+    // same pattern.
+    echo '<script type="application/ld+json">'
+        . json_encode($block, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP)
+        . '</script>' . "\n";
+    ?>
   <?php endforeach; ?>
 </head>
 <body class="bg-surface font-body-md text-on-surface antialiased">

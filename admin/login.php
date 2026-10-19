@@ -14,17 +14,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     csrf_check();
     $email    = strtolower(trim((string) ($_POST['email'] ?? '')));
     $password = (string) ($_POST['password'] ?? '');
-    $user     = db_one('SELECT * FROM users WHERE email = ? AND is_active = 1', [$email]);
 
-    if ($user === null || $user['role'] !== 'admin') {
-        $error = 'Those credentials are not valid for the back office.';
-    } elseif (!password_verify($password, (string) $user['password_hash'])) {
-        $error = 'Those credentials are not valid for the back office.';
+    $blocked = login_throttle_block('admin', $email);
+    if ($blocked !== null) {
+        $error = $blocked;
     } else {
-        login_user($user);
-        flash_set('success', 'Welcome back, ' . strtok((string) $user['name'], ' ') . '.');
-        header('Location: ' . url('admin/index.php'));
-        exit;
+        $user = db_one('SELECT * FROM users WHERE email = ? AND is_active = 1', [$email]);
+
+        if ($user === null || $user['role'] !== 'admin' || !password_verify($password, (string) $user['password_hash'])) {
+            login_throttle_fail('admin', $email);
+            $error = 'Those credentials are not valid for the back office.';
+        } else {
+            login_throttle_clear('admin', $email);
+            login_user($user);
+            flash_set('success', 'Welcome back, ' . strtok((string) $user['name'], ' ') . '.');
+            header('Location: ' . url('admin/index.php'));
+            exit;
+        }
     }
 }
 

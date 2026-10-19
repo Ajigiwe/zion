@@ -7,6 +7,22 @@ declare(strict_types=1);
 // renders the proper error flow instead of a fatal.
 require_once __DIR__ . '/config.php';
 
+// A direct hit skips the CSRF check that actions.php / checkout.php perform,
+// so repeat it here. It is idempotent for those include sites, which validate
+// the same token before requiring this file.
+csrf_check();
+
+// actions.php defines this helper; a standalone request still needs it, and
+// without it every error path below used to end in a fatal instead.
+if (!function_exists('redirect_back')) {
+    /** @internal Standalone fallback for the actions.php helper. */
+    function redirect_back(string $to): never
+    {
+        header('Location: ' . $to);
+        exit;
+    }
+}
+
 if (!function_exists('json_out')) {
     function json_out(array $payload): never
     {
@@ -51,6 +67,12 @@ if ($address === '') { $errors[] = 'Street address is required.'; }
 if (!in_array($channel, ['paystack', 'cod'], true)) {
     $errors[] = 'Please choose a payment method.';
 }
+// Paystack with no keys is the simulation/demo path. Handy while developing,
+// but in production it would confirm orders nobody paid for - refuse there.
+$isDemoPaystack = ($channel === 'paystack') && !is_paystack_configured();
+if ($isDemoPaystack && !paystack_demo_allowed()) {
+    $errors[] = 'Online payment is unavailable right now - please choose Cash on Delivery.';
+}
 if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
     $errors[] = 'That email address is not valid.';
 }
@@ -90,12 +112,14 @@ $total = max(0.0, $subtotal - $discount + $shipFee);
 $submittedRef = trim((string) ($_POST['paystack_ref'] ?? ''));
 $useLivePaystack = ($channel === 'paystack') && is_paystack_configured();
 
-// If Paystack reference was returned from the inline popup, verify it with Paystack API
+// If a reference came back from the inline popup, verify it against what this
+// order actually costs - the popup takes its amount from the browser, so a
+// "success" on its own proves only that *something* was paid.
 $isVerifiedPaystack = false;
 if ($useLivePaystack && $submittedRef !== '') {
-    $verify = paystack_api_request('transaction/verify/' . urlencode($submittedRef));
-    if (!$verify['ok'] || ($verify['data']['status'] ?? '') !== 'success') {
-        $msg = $verify['data']['gateway_response'] ?? $verify['message'] ?? 'Payment authorization failed.';
+    $check = paystack_verify_payment($submittedRef, $total);
+    if (!$check['ok']) {
+        $msg = $check['message'];
         if ($isAjax) {
             json_out(['ok' => false, 'message' => 'Payment verification failed: ' . $msg]);
         }
@@ -105,7 +129,7 @@ if ($useLivePaystack && $submittedRef !== '') {
     $isVerifiedPaystack = true;
 }
 
-$paid = ($channel !== 'cod') && ($isVerifiedPaystack || !$useLivePaystack);
+$paid = ($channel !== 'cod') && ($isVerifiedPaystack || $isDemoPaystack);
 $status = $paid ? 'confirmed' : 'pending';
 $finalPayRef = $isVerifiedPaystack ? $submittedRef : ($paid ? strtoupper($channel) . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)) : null);
 
@@ -113,7 +137,7 @@ try {
     $orderInfo = db_tx(function (PDO $pdo) use (
         $lines, $name, $email, $phone, $region, $city, $address,
         $shipCode, $shipLabel, $shipFee, $subtotal, $discount, $promoCode, $total,
-        $channel, $notes, $discreet, $status, $paid, $useLivePaystack
+        $channel, $finalPayRef, $notes, $discreet, $status, $paid, $useLivePaystack
     ): array {
         $orderNo = next_order_no();
         $u = current_user();
@@ -150,6 +174,16 @@ try {
         ]);
         $orderId = (int) $pdo->lastInsertId();
 
+        // Reserve stock while the product rows are locked, before writing any
+        // item: this is what stops two buyers taking the last unit, and it
+        // fails loudly (rolling the whole order back) instead of clamping a
+        // short stock level to zero like the old GREATEST(0, ...) did.
+        order_reserve_stock($pdo, array_map(static fn (array $l): array => [
+            'product_id' => (int) $l['product_id'],
+            'qty'        => (int) $l['qty'],
+            'label'      => (string) $l['name'],
+        ], $lines));
+
         $ins = $pdo->prepare(
             'INSERT INTO order_items
              (order_id, product_id, product_name, product_image, variant_text, unit_price, qty, line_total)
@@ -170,9 +204,6 @@ try {
                 (int) $l['qty'],
                 (float) $l['unit_price'] * (int) $l['qty'],
             ]);
-            // decrement stock
-            $pdo->prepare('UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?')
-                ->execute([(int) $l['qty'], (int) $l['product_id']]);
         }
 
         $ev = $pdo->prepare('INSERT INTO order_events (order_id, status, note) VALUES (?,?,?)');
@@ -185,6 +216,14 @@ try {
 
         return [$orderNo, $orderId];
     });
+} catch (DomainException $ex) {
+    // Stock shortfall (or an item that vanished): db_tx already rolled back,
+    // so no half-written order exists - send the customer to fix their bag.
+    if ($isAjax) {
+        json_out(['ok' => false, 'message' => $ex->getMessage()]);
+    }
+    flash_set('error', $ex->getMessage());
+    redirect_back(url('cart.php'));
 } catch (Throwable $ex) {
     error_log('order failed: ' . $ex->getMessage());
     if ($isAjax) {

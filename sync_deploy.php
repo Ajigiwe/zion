@@ -5,7 +5,11 @@
  * Runs via CLI or Browser:
  *   CLI:     php sync_deploy.php
  *   CLI:     php sync_deploy.php --public-key=pk_live_... --secret-key=sk_live_...
- *   Browser: Open /sync_deploy.php in your browser
+ *   Browser: /sync_deploy.php?token=<DEPLOY_TOKEN from .env>
+ *
+ * The browser UI executes git and rewrites .env, so it requires the DEPLOY_TOKEN
+ * secret; without one in .env the endpoint answers 403 and CLI is the only way
+ * to deploy. A browser can only ever deploy $defaultRepo.
  *
  * Pipeline:
  *   1. Preps Payment Gateway (validates and injects Paystack keys into .env)
@@ -136,6 +140,59 @@ function fetch_github_latest_commit(string $slug = 'Ajigiwe/zion', string $branc
     return [];
 }
 
+/**
+ * Plain 403 page for a rejected browser request (never echoes secrets).
+ */
+function deploy_denied(string $title, string $hint): string
+{
+    $esc = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/>'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1.0"/>'
+        . '<title>403 - Deploy endpoint locked | Zion Groups</title>'
+        . '<style>body{font-family:ui-monospace,Menlo,Consolas,monospace;background:#020617;color:#e2e8f0;'
+        . 'max-width:44rem;margin:4rem auto;padding:0 1.25rem;line-height:1.65}'
+        . 'h1{font-size:1.15rem;color:#f87171;margin-bottom:.75rem}'
+        . 'code{background:#0f172a;padding:.1rem .35rem;border:1px solid #1e293b;'
+        . 'border-radius:.35rem;color:#34d399;word-break:break-all}'
+        . 'p+p{margin-top:1rem;font-size:.9rem;color:#94a3b8}</style></head><body>'
+        . '<h1>' . $esc($title) . '</h1><p>' . $esc($hint) . '</p>'
+        . '<p>Generate a token with: <code>php -r "echo bin2hex(random_bytes(32));"</code></p>'
+        . '</body></html>';
+}
+
+// -----------------------------------------------------------------------------
+// ACCESS CONTROL
+//
+// Hitting this file from a browser runs git, rewrites .env and can reset the
+// web root, so the web UI is gated by a secret in .env (DEPLOY_TOKEN). CLI
+// runs (php sync_deploy.php, sync_deploy.sh) are not affected.
+// -----------------------------------------------------------------------------
+$currentEnv  = read_env_map($envFile);
+$deployToken = $currentEnv['DEPLOY_TOKEN'] ?? '';
+$webToken    = '';
+
+if (!$isCli) {
+    $webToken = (string) ($_POST['deploy_token'] ?? $_GET['token'] ?? '');
+
+    if ($deployToken === '') {
+        http_response_code(403);
+        exit(deploy_denied(
+            'Deploy endpoint disabled - no DEPLOY_TOKEN configured.',
+            'Add DEPLOY_TOKEN=<random value> to .env, then open /sync_deploy.php?token=<that value>. Until then only CLI deploys (php sync_deploy.php) are possible.'
+        ));
+    }
+
+    if ($webToken === '' || !hash_equals($deployToken, $webToken)) {
+        // Small random delay so blind guessing stays impractical.
+        usleep(random_int(100000, 300000));
+        http_response_code(403);
+        exit(deploy_denied(
+            'Deploy endpoint locked - invalid or missing token.',
+            'Open this page as /sync_deploy.php?token=<DEPLOY_TOKEN from .env>. Once loaded, the deploy form carries the token for you.'
+        ));
+    }
+}
+
 // Parse CLI options or Web inputs
 $cliOpts = $isCli ? getopt('', ['public-key:', 'secret-key:', 'branch:', 'repo:', 'help']) : [];
 if ($isCli && isset($cliOpts['help'])) {
@@ -149,12 +206,23 @@ if ($isCli && isset($cliOpts['help'])) {
     exit(0);
 }
 
-$currentEnv = read_env_map($envFile);
-
 $submittedPub = $isCli ? ($cliOpts['public-key'] ?? null) : ($_POST['paystack_public_key'] ?? null);
 $submittedSec = $isCli ? ($cliOpts['secret-key'] ?? null) : ($_POST['paystack_secret_key'] ?? null);
 $branch       = $isCli ? ($cliOpts['branch'] ?? 'main') : (trim((string) ($_POST['branch'] ?? 'main')) ?: 'main');
 $repoUrl      = $isCli ? ($cliOpts['repo'] ?? $defaultRepo) : (trim((string) ($_POST['repo'] ?? $defaultRepo)) ?: $defaultRepo);
+
+$branchRejected = null;
+
+if (!$isCli) {
+    // A browser may only ever deploy the canonical repository - an attacker
+    // holding the token could otherwise point origin at their own code and get
+    // it written over the web root. Branch names must look like branch names.
+    $repoUrl = $defaultRepo;
+    if (!preg_match('#^[A-Za-z0-9][A-Za-z0-9._/-]{0,79}$#', $branch)) {
+        $branchRejected = $branch;
+        $branch = 'main';
+    }
+}
 
 // In browser mode, execute when POST action=deploy or if run via CLI
 $doDeploy = $isCli || (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['action']));
@@ -197,6 +265,10 @@ if ($doDeploy) {
     // -------------------------------------------------------------------------
     log_step("1. Preparing Payment Gateway (Paystack Keys)");
 
+    if (isset($branchRejected)) {
+        log_warn("Rejected malformed branch name \"$branchRejected\" - deploying \"main\" instead.");
+    }
+
     if (!is_file($envFile) && is_file($root . '/.env.example')) {
         @copy($root . '/.env.example', $envFile);
         @chmod($envFile, 0600);
@@ -205,11 +277,18 @@ if ($doDeploy) {
     }
 
     $updates = [];
-    if ($submittedPub !== null && trim($submittedPub) !== '') {
-        $updates['PAYSTACK_PUBLIC_KEY'] = trim($submittedPub);
-    }
-    if ($submittedSec !== null && trim($submittedSec) !== '') {
-        $updates['PAYSTACK_SECRET_KEY'] = trim($submittedSec);
+    // These values are written straight into .env, so they must be one safe
+    // token: no newlines or "=" (that would inject extra environment variables).
+    foreach (['PAYSTACK_PUBLIC_KEY' => $submittedPub, 'PAYSTACK_SECRET_KEY' => $submittedSec] as $envKey => $raw) {
+        if ($raw === null || trim($raw) === '') {
+            continue;
+        }
+        $val = trim($raw);
+        if (preg_match('/^[A-Za-z0-9_-]{8,200}$/', $val) === 1) {
+            $updates[$envKey] = $val;
+        } else {
+            log_err("Ignored $envKey - a key must be one 8-200 character token (letters, digits, _ or -).");
+        }
     }
 
     if ($updates !== []) {
@@ -566,6 +645,7 @@ if (empty($commitData) || empty($commitData['hash'])) {
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
       <form method="post" class="space-y-5">
         <input type="hidden" name="action" value="deploy"/>
+        <input type="hidden" name="deploy_token" value="<?= htmlspecialchars($webToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"/>
 
         <div class="border-b border-slate-800 pb-4">
           <h2 class="text-lg font-bold text-white flex items-center gap-2">
@@ -592,8 +672,9 @@ if (empty($commitData) || empty($commitData['hash'])) {
               Paystack Secret Key
             </label>
             <input id="sec-key" name="paystack_secret_key" type="password"
-                   placeholder="<?= htmlspecialchars($activeSec !== '' ? '••••••••••••••••' : 'sk_live_... or sk_test_...') ?>"
-                   value="<?= htmlspecialchars($activeSec) ?>"
+                   placeholder="<?= htmlspecialchars($activeSec !== '' ? '•••••••••••••••• (set - leave blank to keep)' : 'sk_live_... or sk_test_...') ?>"
+                   value=""
+                   autocomplete="off"
                    class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono transition"/>
           </div>
         </div>

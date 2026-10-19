@@ -11,6 +11,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- Child tables first so a re-import also works with FOREIGN_KEY_CHECKS = 1
 DROP TABLE IF EXISTS `reviews`;
 DROP TABLE IF EXISTS `contact_messages`;
+DROP TABLE IF EXISTS `login_attempts`;
 DROP TABLE IF EXISTS `settings`;
 DROP TABLE IF EXISTS `order_events`;
 DROP TABLE IF EXISTS `order_items`;
@@ -359,6 +360,21 @@ CREATE TABLE `reviews` (
   KEY `idx_reviews_pending` (`is_approved`,`created_at`),
   CONSTRAINT `fk_reviews_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`)
     ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------- login_attempts
+-- Sign-in brute-force throttling: one row per (scope, identity), where scope
+-- is "customer" / "admin" for the email and "shared" for the client IP.
+-- functions.php also ensures this table lazily so existing installs are
+-- covered without re-importing schema.sql.
+CREATE TABLE `login_attempts` (
+  `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `scope`           VARCHAR(16)  NOT NULL,
+  `ident`           VARCHAR(160) NOT NULL,
+  `attempts`        INT UNSIGNED NOT NULL DEFAULT 1,
+  `last_attempt_at` DATETIME     NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_login_attempts_scope_ident` (`scope`,`ident`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

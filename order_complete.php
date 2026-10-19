@@ -6,7 +6,17 @@ $no = (string) ($_GET['no'] ?? '');
 $order = $no !== '' ? db_one('SELECT * FROM orders WHERE order_no = ?', [$no]) : null;
 
 $u = current_user();
-if ($order === null || ($u !== null && $order['user_id'] !== null && (int) $order['user_id'] !== (int) $u['id'] && !is_admin())) {
+$myOrders = array_map('strval', (array) ($_SESSION['my_orders'] ?? []));
+
+// Same rule as order.php / invoice.php: the owning customer, a guest who
+// placed it in this session, or staff - never "anyone who guesses the number".
+$allowed = false;
+if ($order !== null) {
+    $allowed = is_admin()
+        || in_array((string) $order['order_no'], $myOrders, true)
+        || ($u !== null && $order['user_id'] !== null && (int) $order['user_id'] === (int) $u['id']);
+}
+if (!$allowed) {
     flash_set('info', 'We could not find that order.');
     header('Location: ' . url('index.php'));
     exit;

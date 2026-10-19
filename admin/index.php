@@ -26,6 +26,10 @@ if (($_POST['act'] ?? '') === 'low_stock_alert' && ($_SERVER['REQUEST_METHOD'] ?
 }
 
 /* --- date range -------------------------------------------------------- */
+// Stock reserved by Paystack orders that were never paid for goes back on the
+// shelf. Rate limited inside the helper, so this is a no-op almost always.
+release_abandoned_paystack_orders();
+
 $ranges = [
     '7'   => 'Last 7 days',
     '30'  => 'Last 30 days',

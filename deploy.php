@@ -4,7 +4,9 @@
  *
  * Runs via CLI or Browser:
  *   CLI:     php deploy.php
- *   Browser: /deploy.php
+ *   Browser: /deploy.php?token=<DEPLOY_TOKEN from .env>   (403 without it)
+ *
+ * See sync_deploy.php - this alias shares its access control.
  */
 
 declare(strict_types=1);
