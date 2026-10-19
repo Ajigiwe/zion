@@ -22,10 +22,20 @@ php -S 127.0.0.1:8080
 
 Open http://127.0.0.1:8080
 
-| Role     | Email                                | Password     |
-| -------- | ------------------------------------ | ------------ |
-| Admin    | admin@ziongroups.com.gh              | `Admin123!`  |
-| Customer | kwame.mensah@ziongroups.com.gh        | `Customer123!` |
+This repository is **public**, so nothing secret may ever be written into it -
+credentials, keys or `.env` values are readable by anyone and stay in git
+history forever. The seed's accounts are therefore created with random
+passwords that exist nowhere; choose your own straight after importing:
+
+```bash
+php tools/set_admin_password.php admin@ziongroups.com.gh
+php tools/set_admin_password.php kwame.mensah@ziongroups.com.gh
+```
+
+| Role     | Email                                |
+| -------- | ------------------------------------ |
+| Admin    | admin@ziongroups.com.gh              |
+| Customer | kwame.mensah@ziongroups.com.gh       |
 
 ## First-time server setup (cPanel shared hosting)
 
@@ -71,8 +81,15 @@ cp .env.example .env        # then edit: DB_*, APP_URL=https://yourdomain,
 3. Import `schema.sql`, then `seed.sql`, via phpMyAdmin into that database.
 4. `bash deploy.sh` - pulls, recreates `storage/*`, seeds `.env` only if
    missing, runs the pre-flight check. Fix any FAIL rows it prints and re-run.
-5. After the certificate works: uncomment the HTTPS block at the bottom of
-   `.htaccess`.
+5. HTTPS: the redirect at the bottom of `.htaccess` ships **commented out**.
+   Enable it only after confirming the certificate from an outside network
+   (this machine's DNS can answer `127.0.0.1` for the domain, in which case
+   curl only ever sees XAMPP's own certificate):
+   ```bash
+   curl -sI https://yourdomain.com | head -3   # expect HTTP/1.1 200
+   curl -sI http://yourdomain.com  | head -3   # expect 301 + Location: https
+   ```
+   Then uncomment the three `RewriteCond`/`RewriteRule` lines and push.
 6. Schedule cPanel backups (or a nightly `mysqldump` cron job).
 
 ## Deploying changes
@@ -151,7 +168,30 @@ node --check assets\*.js                      # JS syntax after asset edits
 The same check runs in the browser at `/tools/doctor.php` (read-only, prints no
 secrets; hide it by removing the `tools/doctor.php` exception in `.htaccess`).
 
-Regression sweep and CDP test suites live outside the repo (dev machine only).
+### Smoke suites (security + stock)
+
+```powershell
+php tools/smoke.php        # 26 command-level checks
+php tools/smoke_http.php   # 37 end-to-end checks over HTTP
+```
+
+Both provision a throwaway `<DB_NAME>_smoke` from `schema.sql` + `seed.sql` and
+**drop it again when they finish** (`--keep` retains it for inspection), so the
+application's own database is never touched. `smoke_http.php` additionally
+starts and stops its own pair of PHP servers - 127.0.0.1:8098 with
+`APP_ENV=development` (the simulated Paystack flow is allowed) and
+127.0.0.1:8097 with `APP_ENV=production` (the same flow must be refused while
+cash on delivery still works) - so there is nothing to run by hand and nothing
+left listening afterwards. The account they sign in as is given a random
+password for the duration of the run, because the seed no longer ships one.
+
+They cover sign-in throttling, `FOR UPDATE` stock reservation and rollback, cart
+clamping, the abandoned-order sweeper, Paystack amount/verification guards,
+production's demo-order refusal, order-confirmation IDOR, checkout CSRF and
+oversell refusal. Exit code 0 means all 63 passed. Run them one at a time -
+they share the database name - and note they are CLI-only.
+
+Other regression/CDP suites live outside the repo (dev machine only).
 
 ## Live preview through a tunnel
 

@@ -179,7 +179,7 @@ $ok = if (Test-TunnelUrl $url) { 'storefront OK' } else { 'URL minted (probe pen
 ""
 "  TUNNEL URL : $url"
 "  STATUS     : $ok"
-"  admin      : $url/admin/login.php   (admin@ziongroups.com.gh / Admin123!)"
+"  admin      : $url/admin/login.php   (set the password: php tools/set_admin_password.php <email>)"
 "  watch log   : storage\logs\tunnel-watch.log"
 "  stop with   : powershell -ExecutionPolicy Bypass -File tools\tunnel.ps1 down"
 ""

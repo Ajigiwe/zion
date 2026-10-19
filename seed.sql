@@ -314,10 +314,16 @@ INSERT INTO `product_bundles` (`id`,`product_id`,`item_name`,`item_desc`,`item_p
 (2,9,'FC4A Piano Sustain Pedal','Realistic continuous feel',220.00,2),
 (3,9,'Padded 61-Key Gig Bag','Water-repellent nylon',280.00,3);
 
--- users (passwords: Admin123! / Customer123!)
+-- users
+-- Passwords here are random and appear nowhere in this repository (which is
+-- public), so a fresh import creates accounts nobody can log into until you
+-- choose a password:
+--     php tools/set_admin_password.php admin@ziongroups.com.gh
+--     php tools/set_admin_password.php kwame.mensah@ziongroups.com.gh
+-- Settings > Data wipe ("seed reset") restores the signed-in admin afterwards.
 INSERT INTO `users` (`id`,`name`,`email`,`phone`,`password_hash`,`role`,`momo_verified`,`is_active`) VALUES
-(1,'Zion Admin','admin@ziongroups.com.gh','+233 50 123 4567','$2y$10$FVEa1bxP2W3USSANweXRzesh2D1wM4YFX2nIePkhRJWjBhAtgbEjy','admin',1,1),
-(2,'Kwame Mensah','kwame.mensah@ziongroups.com.gh','+233 24 492 8812','$2y$10$udyLAvaVjkWFHjZ8uwtPbemM7dXvszJqOgFTeOor/3pBIWY.L4fyO','customer',1,1);
+(1,'Zion Admin','admin@ziongroups.com.gh','+233 50 123 4567','$2y$10$pmcSOL4UtBk.cJwfETrT1.42Vlp5lq8zBCyN/H254dcTwZj4ANyYK','admin',1,1),
+(2,'Kwame Mensah','kwame.mensah@ziongroups.com.gh','+233 24 492 8812','$2y$10$48TRznUR9v1tNDYISNzAceYMbGw/w6BlFQ.ygua.jEUgGN/jDbl7C','customer',1,1);
 
 -- addresses
 INSERT INTO `addresses` (`id`,`user_id`,`recipient`,`phone`,`region`,`city`,`street`,`is_default`) VALUES

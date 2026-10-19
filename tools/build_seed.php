@@ -411,10 +411,17 @@ if ($bundleRows) {
 }
 
 // ------------------------------------------------------------- demo account
-$adminHash = password_hash('Admin123!', PASSWORD_DEFAULT);
-$demoHash  = password_hash('Customer123!', PASSWORD_DEFAULT);
+// This repository is public, so no password literal may appear in here or in
+// the seed it writes: take them from the environment when supplied, otherwise
+// generate them for this build and print them to the console only (they are
+// never written to seed.sql - only the hash is).
+$adminPass = getenv('SEED_ADMIN_PASSWORD') ?: bin2hex(random_bytes(9));
+$demoPass  = getenv('SEED_CUSTOMER_PASSWORD') ?: bin2hex(random_bytes(9));
+$adminHash = password_hash($adminPass, PASSWORD_DEFAULT);
+$demoHash  = password_hash($demoPass, PASSWORD_DEFAULT);
 
-$sql[] = '-- users (passwords: Admin123! / Customer123!)';
+$sql[] = '-- users (passwords are random per build; set your own after import)';
+$sql[] = '--   php tools/set_admin_password.php <email>';
 $sql[] = "INSERT INTO `users` (`id`,`name`,`email`,`phone`,`password_hash`,`role`,`momo_verified`,`is_active`) VALUES";
 $sql[] = "(1,'Zion Admin','admin@ziongroups.com.gh','+233 50 123 4567','{$adminHash}','admin',1,1),";
 $sql[] = "(2,'Kwame Mensah','kwame.mensah@ziongroups.com.gh','+233 24 492 8812','{$demoHash}','customer',1,1);";
@@ -493,3 +500,17 @@ printf(
     "Wrote %s\n  categories: %d\n  products:   %d\n  images:     %d\n  variants:   %d\n  specs:      %d\n  bundles:    %d\n",
     $out, count($categories), count($products), $im, $vm, $sm, $bm
 );
+
+// Passwords that were generated for this build are shown once, on the console,
+// and exist nowhere else - not in seed.sql, not in this file.
+$generated = array_filter([
+    'admin' => getenv('SEED_ADMIN_PASSWORD') ? '' : $adminPass,
+    'demo'  => getenv('SEED_CUSTOMER_PASSWORD') ? '' : $demoPass,
+]);
+if ($generated !== [] && PHP_SAPI === 'cli') {
+    fwrite(STDERR, "\nSeed passwords for this build (shown once, never written to disk):\n");
+    foreach ($generated as $who => $pw) {
+        fwrite(STDERR, sprintf("  %-5s %s\n", $who, $pw));
+    }
+    fwrite(STDERR, "  change them any time: php tools/set_admin_password.php <email>\n");
+}

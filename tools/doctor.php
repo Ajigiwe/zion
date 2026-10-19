@@ -172,13 +172,25 @@ if ($pdo !== null) {
                 $hasThrottle ? 'login_attempts table present'
                     : 'login_attempts table absent - it is created automatically on the first sign-in');
 
-            // The seed ships known credentials; say so while they are still live.
+            // Passwords that used to ship in plain text in this repository's README
+            // and seed (the repo is public). Matching against their hashes detects
+            // an install that never rotated them, without keeping the password
+            // itself anywhere in the tree.
+            $publishedHashes = [
+                '$2y$10$FVEa1bxP2W3USSANweXRzesh2D1wM4YFX2nIePkhRJWjBhAtgbEjy',
+                '$2y$10$udyLAvaVjkWFHjZ8uwtPbemM7dXvszJqOgFTeOor/3pBIWY.L4fyO',
+            ];
+            $unrotated = null;
             foreach ($pdo->query("SELECT email, password_hash FROM users WHERE role = 'admin'") as $adminRow) {
-                if (password_verify('Admin123!', (string) $adminRow['password_hash'])) {
-                    chk('admin password', 'WARN', $adminRow['email'] . ' still uses the seeded Admin123! - change it');
+                if (in_array((string) $adminRow['password_hash'], $publishedHashes, true)) {
+                    $unrotated = (string) $adminRow['email'];
                     break;
                 }
             }
+            chk('admin password', $unrotated === null ? 'PASS' : 'WARN',
+                $unrotated === null
+                    ? 'not one of the previously published passwords'
+                    : $unrotated . ' still uses a password that was published in this repo - change it now');
         }
     } catch (Throwable $e) {
         chk('database queries', 'FAIL', $isCli ? $e->getMessage() : 'server error while reading tables');
