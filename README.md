@@ -81,15 +81,15 @@ cp .env.example .env        # then edit: DB_*, APP_URL=https://yourdomain,
 3. Import `schema.sql`, then `seed.sql`, via phpMyAdmin into that database.
 4. `bash deploy.sh` - pulls, recreates `storage/*`, seeds `.env` only if
    missing, runs the pre-flight check. Fix any FAIL rows it prints and re-run.
-5. HTTPS: the redirect at the bottom of `.htaccess` ships **commented out**.
-   Enable it only after confirming the certificate from an outside network
-   (this machine's DNS can answer `127.0.0.1` for the domain, in which case
-   curl only ever sees XAMPP's own certificate):
+5. HTTPS: the redirect at the bottom of `.htaccess` is **enabled** (verified
+   2026-10-21 — trusted certificate, apex and www both serving the app). Only
+   comment it out again if the certificate lapses, and re-verify before ever
+   turning it back on:
    ```bash
    curl -sI https://yourdomain.com | head -3   # expect HTTP/1.1 200
    curl -sI http://yourdomain.com  | head -3   # expect 301 + Location: https
    ```
-   Then uncomment the three `RewriteCond`/`RewriteRule` lines and push.
+   `localhost` / `127.0.0.1` are exempt, so local Apache still works over HTTP.
 6. Schedule cPanel backups (or a nightly `mysqldump` cron job).
 
 ## Deploying changes

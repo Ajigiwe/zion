@@ -36,17 +36,13 @@ RewriteRule ^robots\.txt$ robots.php [L]
 RewriteRule ^sitemap\.xml$ sitemap.php [L]
 
 # ------------------------------------------------------------- HTTPS only
-# OFF by default: uncommenting this 301s every non-HTTPS request to
-# https://, which only works once a trusted certificate is actually installed.
+# 301s every non-HTTPS request. Verified against the live host on 2026-10-21:
+# the certificate is trusted and both the apex and www serve the app. Comment
+# these three lines out only if the certificate lapses - otherwise every
+# visitor is redirected to a dead endpoint.
 #
-# Verify from a network that is NOT this development machine first - local DNS
-# can answer 127.0.0.1 for the domain, in which case these probes only see
-# XAMPP's own certificate:
-#     curl -sI https://yourdomain.com | head -3   # expect HTTP/1.1 200
-#     curl -sI http://yourdomain.com  | head -3   # expect 301 + Location: https
-#
-# The localhost exemption keeps local Apache working over plain HTTP; the
-# README's `php -S` dev server ignores .htaccess entirely.
-# RewriteCond %{HTTPS} !=on
-# RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$
-# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# localhost/127.0.0.1 stay exempt so local Apache keeps working over plain
+# HTTP; the README's `php -S` dev server ignores .htaccess entirely.
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
