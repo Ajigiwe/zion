@@ -344,23 +344,32 @@ admin_head('Telegram Intake', 'intake');
       <!-- Gallery picker modal -->
       <div id="galleryModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 md:p-6" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
         <div class="fixed inset-0 bg-black/70 backdrop-blur-xs" id="galleryBackdrop"></div>
-        <div class="relative bg-surface rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden max-w-4xl w-full max-h-[88vh]"
+        <div class="relative bg-surface rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden max-w-5xl w-full max-h-[88vh]"
              style="animation: galleryIn 150ms ease-out;">
-          <header class="flex items-center justify-between p-4 border-b border-outline-variant bg-surface rounded-t-2xl flex-shrink-0">
+          <header class="flex flex-wrap items-center justify-between p-4 border-b border-outline-variant bg-surface rounded-t-2xl flex-shrink-0 gap-3">
             <div>
-              <h2 id="galleryTitle" class="text-base md:text-lg font-semibold text-on-surface">Pick a photo for <span id="galleryRowName" class="text-primary font-bold"></span></h2>
+              <div class="flex items-center gap-2">
+                <h2 id="galleryTitle" class="text-base md:text-lg font-semibold text-on-surface">Pick a photo for <span id="galleryRowName" class="text-primary font-bold"></span></h2>
+                <span id="galleryCountBadge" class="text-xs font-mono text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full font-semibold"></span>
+              </div>
               <p class="text-xs text-on-surface-variant mt-0.5">Click any photo to assign it to this product row.</p>
             </div>
-            <button type="button" id="galleryClose" class="p-2 rounded-full hover:bg-surface-container text-on-surface-variant text-xl leading-none"
-                    aria-label="Close gallery picker">&times;</button>
+            <div class="flex items-center gap-2">
+              <input type="text" id="gallerySearch" placeholder="Filter by name or caption..."
+                     class="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container text-xs text-on-surface focus:border-primary outline-none w-48 sm:w-64"/>
+              <button type="button" id="galleryClose" class="p-2 rounded-full hover:bg-surface-container text-on-surface-variant text-xl leading-none"
+                      aria-label="Close gallery picker">&times;</button>
+            </div>
           </header>
-          <div class="p-4 overflow-y-auto flex-1 min-h-0" id="galleryGrid">
-            <p class="text-center text-on-surface-variant py-8">Loading…</p>
+          <div class="p-4 overflow-y-auto flex-1 min-h-0" id="galleryScrollWrap" style="max-height: calc(88vh - 130px);">
+            <div id="galleryGrid">
+              <p class="text-center text-on-surface-variant py-8 col-span-full">Loading…</p>
+            </div>
           </div>
-          <footer class="p-4 border-t border-outline-variant bg-surface rounded-b-2xl flex-shrink-0">
-            <p class="text-[11px] text-on-surface-variant text-center">
-              Click a photo to assign it. <kbd class="px-1.5 py-0.5 bg-surface-container rounded border border-outline-variant">Esc</kbd> to close.
-              <span id="galleryHint" class="ml-2"></span>
+          <footer class="p-3.5 border-t border-outline-variant bg-surface rounded-b-2xl flex-shrink-0 flex items-center justify-between flex-wrap gap-2">
+            <span id="galleryFooterCount" class="text-xs font-mono text-on-surface-variant"></span>
+            <p class="text-[11px] text-on-surface-variant text-right">
+              Click a photo to assign. <kbd class="px-1.5 py-0.5 bg-surface-container rounded border border-outline-variant">Esc</kbd> to close.
             </p>
           </footer>
         </div>
@@ -381,8 +390,9 @@ admin_head('Telegram Intake', 'intake');
           display: flex;
           flex-direction: column;
           cursor: pointer;
-          min-height: 190px;
+          min-height: 195px;
           transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+          position: relative;
         }
         .gallery-item:hover, .gallery-item:focus {
           transform: translateY(-2px);
@@ -396,9 +406,9 @@ admin_head('Telegram Intake', 'intake');
         }
         .gallery-thumb-wrap {
           width: 100%;
-          height: 135px;
+          height: 140px;
           position: relative;
-          background: var(--md-sys-color-surface-container-high, #e9e9e9);
+          background: var(--md-sys-color-surface-container, #f3f3f3);
           overflow: hidden;
           flex-shrink: 0;
           display: flex;
@@ -408,8 +418,9 @@ admin_head('Telegram Intake', 'intake');
         .gallery-thumb-wrap img {
           width: 100%;
           height: 100%;
-          object-fit: cover;
+          object-fit: contain;
           display: block;
+          padding: 4px;
         }
         .gallery-item-meta {
           padding: 8px 10px;
@@ -419,6 +430,7 @@ admin_head('Telegram Intake', 'intake');
           flex-direction: column;
           justify-content: center;
           background: var(--md-sys-color-surface, #ffffff);
+          border-top: 1px solid var(--md-sys-color-outline-variant, #f0f0f0);
         }
         .gallery-caption {
           font-size: 11px;
@@ -431,16 +443,18 @@ admin_head('Telegram Intake', 'intake');
 
       <script>
         (function () {
-          const modal      = document.getElementById('galleryModal');
-          const grid       = document.getElementById('galleryGrid');
-          const title      = document.getElementById('galleryRowName');
-          const hint       = document.getElementById('galleryHint');
-          const closeBtn   = document.getElementById('galleryClose');
-          const backdrop   = document.getElementById('galleryBackdrop');
-          const openBtn    = document.getElementById('openGalleryBtn');
-          const pickBtns   = document.querySelectorAll('.gallery-pick');
-          const rowSelects = document.querySelectorAll('.row-assign');
-          const baseUrl    = <?= json_encode(base_url('')) ?>;
+          const modal        = document.getElementById('galleryModal');
+          const grid         = document.getElementById('galleryGrid');
+          const title        = document.getElementById('galleryRowName');
+          const closeBtn     = document.getElementById('galleryClose');
+          const backdrop     = document.getElementById('galleryBackdrop');
+          const openBtn      = document.getElementById('openGalleryBtn');
+          const pickBtns     = document.querySelectorAll('.gallery-pick');
+          const rowSelects   = document.querySelectorAll('.row-assign');
+          const searchInput  = document.getElementById('gallerySearch');
+          const countBadge   = document.getElementById('galleryCountBadge');
+          const footerCount  = document.getElementById('galleryFooterCount');
+          const baseUrl      = <?= json_encode(base_url('')) ?>;
 
           let allPhotos = [];
           let targetRow = null;
@@ -457,6 +471,10 @@ admin_head('Telegram Intake', 'intake');
             }
           }
 
+          function escapeHtml(str) {
+            return String(str || '').replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
+          }
+
           function imgUrl(path) {
             if (!path) return '';
             if (/^(https?:)?\/\//i.test(path) || path.startsWith('data:')) return path;
@@ -464,9 +482,28 @@ admin_head('Telegram Intake', 'intake');
             return base + '/' + path.replace(/^\/+/, '');
           }
 
-          function renderGrid() {
+          function renderGrid(filterText = '') {
             if (!allPhotos || allPhotos.length === 0) {
               grid.innerHTML = '<p class="text-center text-on-surface-variant py-8 col-span-full">No photos staged in this batch yet. Send photos to the bot and reload.</p>';
+              if (countBadge) countBadge.textContent = '0 photos';
+              if (footerCount) footerCount.textContent = 'Showing 0 staged photos';
+              return;
+            }
+
+            const q = (filterText || '').trim().toLowerCase();
+            const list = q === ''
+              ? allPhotos
+              : allPhotos.filter(p => {
+                  const fn = (p.path || '').toLowerCase();
+                  const cap = (p.caption || '').toLowerCase();
+                  return fn.includes(q) || cap.includes(q);
+                });
+
+            if (countBadge) countBadge.textContent = allPhotos.length + ' photos';
+            if (footerCount) footerCount.textContent = `Showing ${list.length} of ${allPhotos.length} staged photos`;
+
+            if (list.length === 0) {
+              grid.innerHTML = `<p class="text-center text-on-surface-variant py-8 col-span-full">No photos match "${escapeHtml(filterText)}".</p>`;
               return;
             }
 
@@ -474,23 +511,27 @@ admin_head('Telegram Intake', 'intake');
               ? (document.querySelector(`select.row-assign[data-row="${targetRow}"]`)?.value || '')
               : '';
 
-            grid.innerHTML = allPhotos.map((photo) => {
+            grid.innerHTML = list.map((photo, idx) => {
               const cap = photo.caption || '';
               const short = cap.length > 60 ? cap.slice(0, 57) + '…' : cap;
               const filename = (photo.path || '').split('/').pop() || 'photo';
               const isSelected = currentVal !== '' && currentVal === photo.path;
               const src = photo.url || imgUrl(photo.path);
-              return `<div class="gallery-item ${isSelected ? 'selected' : ''}" data-path="${photo.path}" tabindex="0" role="button" aria-label="${short || filename}">
+              const safeShort = escapeHtml(short || filename);
+              const safeFilename = escapeHtml(filename);
+              const safeCap = escapeHtml(cap);
+              return `<div class="gallery-item ${isSelected ? 'selected' : ''}" data-path="${photo.path}" tabindex="0" role="button" aria-label="${safeShort}">
+                <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white font-mono text-[10px] z-10 leading-none">#${idx + 1}</span>
                 <div class="gallery-thumb-wrap">
-                  <img src="${src}" alt="${short || filename}" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+                  <img src="${src}" alt="${safeShort}" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
                   <div class="gallery-fallback absolute inset-0 flex-col items-center justify-center text-on-surface-variant/60 gap-1 bg-surface-container p-2 text-center" style="display:none;">
                     <span class="material-symbols-outlined text-2xl">image_not_supported</span>
                     <span class="text-[10px] uppercase font-bold tracking-wider">No preview</span>
                   </div>
                 </div>
                 <div class="gallery-item-meta">
-                  <div class="font-mono text-xs text-on-surface font-semibold truncate" title="${filename}">${filename}</div>
-                  ${short ? `<div class="gallery-caption mt-0.5" title="${cap}">${short}</div>` : ''}
+                  <div class="font-mono text-xs text-on-surface font-semibold truncate" title="${safeFilename}">${safeFilename}</div>
+                  ${short ? `<div class="gallery-caption mt-0.5" title="${safeCap}">${escapeHtml(short)}</div>` : ''}
                 </div>
               </div>`;
             }).join('');
@@ -511,6 +552,7 @@ admin_head('Telegram Intake', 'intake');
             const row = document.querySelector(`tr[data-row="${rowIdx}"]`);
             const name = row ? row.querySelector('td:nth-child(4)')?.textContent?.trim() : '';
             title.textContent = name || (rowIdx !== null ? `row ${rowIdx + 1}` : 'batch');
+            if (searchInput) searchInput.value = '';
             parseData();
             renderGrid();
             modal.classList.remove('hidden');
@@ -554,13 +596,14 @@ admin_head('Telegram Intake', 'intake');
             closeModal();
           }
 
+          searchInput?.addEventListener('input', () => renderGrid(searchInput.value));
           pickBtns.forEach(btn => btn.addEventListener('click', () => openModal(parseInt(btn.dataset.row, 10))));
           openBtn?.addEventListener('click', () => {
             const firstRow = rowSelects.length > 0 ? parseInt(rowSelects[0].dataset.row, 10) : 0;
             openModal(firstRow);
           });
-          closeBtn.addEventListener('click', closeModal);
-          backdrop.addEventListener('click', closeModal);
+          closeBtn?.addEventListener('click', closeModal);
+          backdrop?.addEventListener('click', closeModal);
           document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
           });
