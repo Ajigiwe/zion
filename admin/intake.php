@@ -324,6 +324,7 @@ admin_head('Telegram Intake', 'intake');
 
       <form method="post" action="<?= e(url('admin/intake.php')) ?>" class="mt-4"
             onsubmit="return confirm('Discard this batch and delete its staged photos?');">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="discard_batch"/>
         <input type="hidden" name="batch_id" value="<?= (int) $batch['id'] ?>"/>
         <button type="submit" class="font-label-nav text-label-nav uppercase tracking-wider text-error hover:underline">
@@ -530,6 +531,7 @@ admin_head('Telegram Intake', 'intake');
                     <?php endif; ?>
                     <form method="post" action="<?= e(url('admin/intake.php')) ?>" class="inline ml-3"
                           onsubmit="return confirm('Discard batch #<?= (int) $b['id'] ?> and its photos?');">
+                      <?= csrf_field() ?>
                       <input type="hidden" name="action" value="discard_batch"/>
                       <input type="hidden" name="batch_id" value="<?= (int) $b['id'] ?>"/>
                       <button type="submit" class="font-label-nav text-label-nav uppercase tracking-wider text-error hover:underline">discard</button>
