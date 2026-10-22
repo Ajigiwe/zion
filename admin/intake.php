@@ -330,14 +330,14 @@ admin_head('Telegram Intake', 'intake');
       <!-- Gallery picker modal -->
       <div id="galleryModal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
         <div class="absolute inset-0 bg-black/70" id="galleryBackdrop"></div>
-        <div class="absolute inset-4 md:inset-10 bg-surface rounded-2xl shadow-xl flex flex-col max-h-full"
+        <div class="absolute inset-2 md:inset-4 bg-surface rounded-2xl shadow-xl flex flex-col max-h-full w-full"
              style="animation: galleryIn 150ms ease-out;">
           <header class="flex items-center justify-between p-4 border-b border-outline-variant sticky top-0 bg-surface rounded-t-2xl z-10">
             <h2 id="galleryTitle" class="text-lg font-semibold text-on-surface">Pick a photo for <span id="galleryRowName"></span></h2>
             <button type="button" id="galleryClose" class="p-2 rounded-full hover:bg-surface-container text-on-surface-variant"
                     aria-label="Close gallery picker">&times;</button>
           </header>
-          <div class="p-4 overflow-y-auto flex-1" id="galleryGrid">
+          <div class="p-4 overflow-y-auto flex-1 min-w-0 w-full" id="galleryGrid">
             <p class="text-center text-on-surface-variant py-8">Loading…</p>
           </div>
           <footer class="p-4 border-t border-outline-variant sticky bottom-0 bg-surface rounded-b-2xl">
