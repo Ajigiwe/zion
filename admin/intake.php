@@ -232,10 +232,9 @@ admin_head('Telegram Intake', 'intake');
           </label>
           <button type="button" id="openGalleryBtn"
                   class="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container hover:bg-surface-container-high transition font-label-nav text-label-nav uppercase tracking-wider"
-                  data-leftovers="<?= e(json_encode($match['leftover'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
-                  data-captions="<?= e(json_encode($captions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
+                  data-all-photos="<?= e(json_encode(array_map(function($it) { return ['path' => (string)$it['file_path'], 'caption' => (string)$it['caption']]; }, $items), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
                   data-base-url="<?= e(base_url('')) ?>">
-            Open gallery picker
+            Open gallery picker (all <?= count($items) ?> photos)
           </button>
         </div>
 
@@ -374,28 +373,26 @@ admin_head('Telegram Intake', 'intake');
           const pickBtns = document.querySelectorAll('.gallery-pick');
           const rowSelects = document.querySelectorAll('.row-assign');
 
-          let leftovers = [];
-          let captions = {};
+          let allPhotos = [];
           let targetRow = null;
 
           function parseData() {
             if (openBtn) {
-              try { leftovers = JSON.parse(openBtn.dataset.leftovers || '[]'); } catch { leftovers = []; }
-              try { captions = JSON.parse(openBtn.dataset.captions || '{}'); } catch { captions = {}; }
+              try { allPhotos = JSON.parse(openBtn.dataset.allPhotos || '[]'); } catch { allPhotos = []; }
             }
           }
 
           function renderGrid(filterRow = null) {
-            if (leftovers.length === 0) {
-              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No leftover photos to pick from.</p>';
+            if (allPhotos.length === 0) {
+              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet.</p>';
               return;
             }
-            grid.innerHTML = leftovers.map((path, idx) => {
-              const cap = captions[path] || '';
+            grid.innerHTML = allPhotos.map((photo, idx) => {
+              const cap = photo.caption || '';
               const short = cap.length > 80 ? cap.slice(0, 77) + '…' : cap;
-              const filename = path.split('/').pop();
-              return `<div class="gallery-item" data-path="${path}" tabindex="0" role="button" aria-label="${short || filename}">
-                <img src="${imgUrl(path)}" alt="${short || filename}" class="gallery-item-img" loading="lazy">
+              const filename = photo.path.split('/').pop();
+              return `<div class="gallery-item" data-path="${photo.path}" tabindex="0" role="button" aria-label="${short || filename}">
+                <img src="${imgUrl(photo.path)}" alt="${short || filename}" class="gallery-item-img" loading="lazy">
                 <div class="gallery-item-meta">
                   <div class="font-mono text-xs text-on-surface-variant truncate">${filename}</div>
                   ${short ? `<div class="gallery-caption truncate">${short}</div>` : ''}
