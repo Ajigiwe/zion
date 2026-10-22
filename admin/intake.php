@@ -233,7 +233,8 @@ admin_head('Telegram Intake', 'intake');
           <button type="button" id="openGalleryBtn"
                   class="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container hover:bg-surface-container-high transition font-label-nav text-label-nav uppercase tracking-wider"
                   data-leftovers="<?= e(json_encode($match['leftover'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
-                  data-captions="<?= e(json_encode($captions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>">
+                  data-captions="<?= e(json_encode($captions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
+                  data-base-url="<?= e(base_url('')) ?>">
             Open gallery picker
           </button>
         </div>
@@ -408,7 +409,7 @@ admin_head('Telegram Intake', 'intake');
           }
 
           function imgUrl(path) {
-            const base = document.querySelector('base')?.href || '';
+            const base = openBtn?.dataset.baseUrl || '';
             return base + 'storage/uploads/' + path.replace(/^storage\/uploads\//, '');
           }
 
