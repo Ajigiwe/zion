@@ -437,13 +437,56 @@ function bulk_validate_row(array $row, array $existingSkus = []): array
         }
     }
 
-    // Determine Action: Insert vs Update
-    $action = 'insert';
-    $existingId = null;
-    if ($sku !== '') {
-        if (isset($existingSkus[$sku])) {
-            $action = 'update';
-            $existingId = $existingSkus[$sku];
+    // Determine Action: Insert vs Update, and detect if product already exists
+    $action          = 'insert';
+    $existingId      = null;
+    $isExisting      = false;
+    $existingProduct = null;
+    $matchReason     = '';
+
+    $lookupIsStructured = isset($existingSkus['skus']);
+    $slugCandidate      = function_exists('slugify') ? slugify($name) : strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', $name), '-'));
+
+    if ($lookupIsStructured) {
+        // 1. Check SKU
+        if ($sku !== '' && isset($existingSkus['skus'][strtolower($sku)])) {
+            $existingProduct = $existingSkus['skus'][strtolower($sku)];
+            $matchReason = 'SKU "' . $existingProduct['sku'] . '"';
+        }
+        // 2. Check Name in Department
+        elseif ($name !== '' && isset($existingSkus['names'][$dept . ':' . strtolower($name)])) {
+            $existingProduct = $existingSkus['names'][$dept . ':' . strtolower($name)];
+            $matchReason = 'Name "' . $existingProduct['name'] . '" in ' . ucfirst($dept);
+        }
+        // 3. Check Slug
+        elseif ($slugCandidate !== '' && isset($existingSkus['slugs'][$slugCandidate])) {
+            $existingProduct = $existingSkus['slugs'][$slugCandidate];
+            $matchReason = 'Slug "' . $slugCandidate . '"';
+        }
+        // 4. Check Global Name
+        elseif ($name !== '' && isset($existingSkus['names']['*:' . strtolower($name)])) {
+            $existingProduct = $existingSkus['names']['*:' . strtolower($name)];
+            $matchReason = 'Name "' . $existingProduct['name'] . '"';
+        }
+
+        if ($existingProduct !== null) {
+            $action     = 'update';
+            $existingId = (int) $existingProduct['id'];
+            $isExisting = true;
+            $warnings[] = sprintf(
+                'Already in catalogue (ID #%d, SKU: %s) - matched by %s.',
+                $existingProduct['id'],
+                $existingProduct['sku'] !== '' ? $existingProduct['sku'] : '(auto)',
+                $matchReason
+            );
+        }
+    } else {
+        // Fallback for simple [sku => id] array
+        if ($sku !== '' && isset($existingSkus[$sku])) {
+            $action     = 'update';
+            $existingId = (int) $existingSkus[$sku];
+            $isExisting = true;
+            $warnings[] = sprintf('Already in catalogue (ID #%d, SKU: %s).', $existingId, $sku);
         }
     }
 
@@ -451,12 +494,15 @@ function bulk_validate_row(array $row, array $existingSkus = []): array
     $isFeatured = bulk_parse_bool($row['is_featured'] ?? null, 0);
 
     return [
-        'valid'      => ($errors === []),
-        'action'     => ($errors === []) ? $action : 'error',
-        'product_id' => $existingId,
-        'errors'     => $errors,
-        'warnings'   => $warnings,
-        'data'       => [
+        'valid'            => ($errors === []),
+        'action'           => ($errors === []) ? $action : 'error',
+        'product_id'       => $existingId,
+        'is_existing'      => $isExisting,
+        'existing_product' => $existingProduct,
+        'match_reason'     => $matchReason,
+        'errors'           => $errors,
+        'warnings'         => $warnings,
+        'data'             => [
             'row_num'           => $rowNum,
             'sku'               => $sku,
             'name'              => $name,
@@ -483,6 +529,70 @@ function bulk_validate_row(array $row, array $existingSkus = []): array
 }
 
 /**
+ * Load all existing products into a fast structured in-memory lookup map:
+ * - skus: [lowercase_sku => info]
+ * - slugs: [slug => info]
+ * - names: [dept:lowercase_name => info]
+ *
+ * @return array{
+ *   skus: array<string, array{id: int, sku: string, slug: string, name: string, department: string, price: float, stock: int, image_url: string}>,
+ *   slugs: array<string, array{id: int, sku: string, slug: string, name: string, department: string, price: float, stock: int, image_url: string}>,
+ *   names: array<string, array{id: int, sku: string, slug: string, name: string, department: string, price: float, stock: int, image_url: string}>,
+ *   simple_skus: array<string, int>
+ * }
+ */
+function bulk_get_existing_products_lookup(): array
+{
+    try {
+        $rows = db_all('SELECT id, sku, slug, name, department, price, stock, image_url FROM products');
+        $skus = [];
+        $slugs = [];
+        $names = [];
+        $simpleSkus = [];
+        foreach ($rows as $r) {
+            $id   = (int) $r['id'];
+            $sku  = trim((string) ($r['sku'] ?? ''));
+            $slug = trim((string) ($r['slug'] ?? ''));
+            $name = trim((string) ($r['name'] ?? ''));
+            $dept = strtolower(trim((string) ($r['department'] ?? '')));
+
+            $info = [
+                'id'         => $id,
+                'sku'        => $sku,
+                'slug'       => $slug,
+                'name'       => $name,
+                'department' => $dept,
+                'price'      => (float) ($r['price'] ?? 0),
+                'stock'      => (int) ($r['stock'] ?? 0),
+                'image_url'  => (string) ($r['image_url'] ?? ''),
+            ];
+
+            if ($sku !== '') {
+                $skus[strtolower($sku)] = $info;
+                $simpleSkus[$sku] = $id;
+            }
+            if ($slug !== '') {
+                $slugs[$slug] = $info;
+            }
+            if ($name !== '') {
+                $names[$dept . ':' . strtolower($name)] = $info;
+                if (!isset($names['*:' . strtolower($name)])) {
+                    $names['*:' . strtolower($name)] = $info;
+                }
+            }
+        }
+        return [
+            'skus'        => $skus,
+            'slugs'       => $slugs,
+            'names'       => $names,
+            'simple_skus' => $simpleSkus,
+        ];
+    } catch (Throwable $e) {
+        return ['skus' => [], 'slugs' => [], 'names' => [], 'simple_skus' => []];
+    }
+}
+
+/**
  * Load all existing SKUs into a fast in-memory map [sku => id].
  *
  * @return array<string, int>
@@ -505,30 +615,35 @@ function bulk_get_existing_skus_map(): array
  * Preview and dry-run validate parsed CSV rows.
  *
  * @param array<int, array<string, string>> $rows
- * @param array{mode?: string} $options
+ * @param array{mode?: string, filter_existing?: bool} $options
  * @return array{
  *   total: int,
  *   valid_count: int,
  *   error_count: int,
  *   insert_count: int,
  *   update_count: int,
+ *   existing_count: int,
+ *   new_count: int,
  *   results: array<int, array<string, mixed>>
  * }
  */
 function bulk_preview_validation(array $rows, array $options = []): array
 {
-    $existingMap = bulk_get_existing_skus_map();
-    $results = [];
-    $validCount  = 0;
-    $errorCount  = 0;
-    $insertCount = 0;
-    $updateCount = 0;
+    $lookup         = bulk_get_existing_products_lookup();
+    $filterExisting = !empty($options['filter_existing']);
+    $results        = [];
+    $validCount     = 0;
+    $errorCount     = 0;
+    $insertCount    = 0;
+    $updateCount    = 0;
+    $existingCount  = 0;
+    $newCount       = 0;
 
     // Track duplicate SKUs appearing multiple times within the same upload file
     $fileSkus = [];
 
     foreach ($rows as $row) {
-        $validated = bulk_validate_row($row, $existingMap);
+        $validated = bulk_validate_row($row, $lookup);
 
         $sku = $validated['data']['sku'];
         if ($sku !== '') {
@@ -537,6 +652,12 @@ function bulk_preview_validation(array $rows, array $options = []): array
             } else {
                 $fileSkus[$sku] = (int) ($row['_row_num'] ?? 0);
             }
+        }
+
+        if ($validated['is_existing']) {
+            $existingCount++;
+        } else {
+            $newCount++;
         }
 
         if ($validated['valid']) {
@@ -550,16 +671,22 @@ function bulk_preview_validation(array $rows, array $options = []): array
             $errorCount++;
         }
 
+        if ($filterExisting && $validated['is_existing']) {
+            continue; // Filter out already existing items
+        }
+
         $results[] = $validated;
     }
 
     return [
-        'total'        => count($rows),
-        'valid_count'  => $validCount,
-        'error_count'  => $errorCount,
-        'insert_count' => $insertCount,
-        'update_count' => $updateCount,
-        'results'      => $results,
+        'total'          => count($rows),
+        'valid_count'    => $validCount,
+        'error_count'    => $errorCount,
+        'insert_count'   => $insertCount,
+        'update_count'   => $updateCount,
+        'existing_count' => $existingCount,
+        'new_count'      => $newCount,
+        'results'        => $results,
     ];
 }
 

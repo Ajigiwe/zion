@@ -70,6 +70,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         }
 
         $results  = $work['preview']['results'];
+        if (!empty($_POST['filter_existing'])) {
+            $results = array_values(array_filter($results, static fn($r) => empty($r['is_existing'])));
+        }
         $match    = intake_match($results, intake_items($batchId), [
             'order_fallback' => !empty($_POST['use_order']),
         ]);
@@ -198,6 +201,12 @@ admin_head('Telegram Intake', 'intake');
       $match    = intake_match($results, $items, ['order_fallback' => $useOrder]);
 
       $captions = [];
+      $existingInBatch = 0;
+      foreach ($results as $res) {
+          if (!empty($res['is_existing'])) {
+              $existingInBatch++;
+          }
+      }
       foreach ($items as $it) {
           $cap = trim((string) $it['caption']);
           if ($cap !== '' && !isset($captions[(string) $it['file_path']])) {
@@ -215,6 +224,9 @@ admin_head('Telegram Intake', 'intake');
           <strong><?= (int) $stats['order'] ?></strong> in send order.
           <?php if ((int) $stats['unmatched'] > 0): ?>
             <span class="text-[#8a5a00] font-bold"><?= (int) $stats['unmatched'] ?> row(s) still need an image.</span>
+          <?php endif; ?>
+          <?php if ($existingInBatch > 0): ?>
+            <span class="text-amber-700 font-bold"><?= $existingInBatch ?> row(s) already exist in catalogue.</span>
           <?php endif; ?>
           <?php if ((int) $stats['leftovers'] > 0): ?>
             <?= (int) $stats['leftovers'] ?> photo(s) not yet used (pick them in the dropdowns below).
@@ -234,6 +246,12 @@ admin_head('Telegram Intake', 'intake');
             <a href="<?= e(url('admin/intake.php?review=' . (int) $batch['id'] . '&order=' . ($useOrder ? '0' : '1'))) ?>"
                class="text-primary hover:underline">(re-match)</a>
           </label>
+          <?php if ($existingInBatch > 0): ?>
+            <label class="flex items-center gap-2 cursor-pointer bg-amber-500/15 border border-amber-500/30 text-amber-900 px-3 py-1.5 rounded-lg text-xs font-bold">
+              <input type="checkbox" name="filter_existing" value="1" />
+              <span>Filter out <?= $existingInBatch ?> existing product(s) (send only <?= count($results) - $existingInBatch ?> new)</span>
+            </label>
+          <?php endif; ?>
           <script type="application/json" id="intakeGalleryData">
             <?= json_encode(array_map(static fn($it) => [
                 'path'    => (string) $it['file_path'],
@@ -288,7 +306,14 @@ admin_head('Telegram Intake', 'intake');
                   </td>
                   <td class="p-3 font-mono text-xs text-on-surface"><?= e((string) $data['sku']) ?></td>
                   <td class="p-3 font-body-sm text-body-sm text-on-surface max-w-xs">
-                    <?= e((string) $data['name']) ?>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span><?= e((string) $data['name']) ?></span>
+                      <?php if (!empty($res['is_existing'])): ?>
+                        <span class="font-label-tag text-label-tag uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-800" title="<?= e($res['match_reason'] ?? 'Already in catalogue') ?>">
+                          already exists
+                        </span>
+                      <?php endif; ?>
+                    </div>
                     <?php if (!empty($res['warnings'])): ?>
                       <div class="text-[11px] text-[#8a5a00] mt-1">
                         <?php foreach ($res['warnings'] as $w): ?>

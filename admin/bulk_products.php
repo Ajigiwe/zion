@@ -97,7 +97,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             exit;
         }
 
-        $preview = bulk_preview_validation($parsed['rows']);
+        $filterExisting = !empty($_POST['filter_existing']);
+        $preview = bulk_preview_validation($parsed['rows'], ['filter_existing' => $filterExisting]);
         
         // Populate waiting room in session
         $_SESSION['bulk_waiting_room'] = [
@@ -106,7 +107,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             'items'       => $preview['results'],
         ];
 
-        flash_set('success', sprintf('Loaded %d products into the Waiting Room. You can now add images, edit details, and commit when ready.', count($preview['results'])));
+        if ($filterExisting) {
+            flash_set('success', sprintf('Loaded %d new products into the Waiting Room (%d existing products were filtered out).', count($preview['results']), $preview['existing_count']));
+        } else {
+            $msg = sprintf('Loaded %d products into the Waiting Room.', count($preview['results']));
+            if ($preview['existing_count'] > 0) {
+                $msg .= sprintf(' (%d brand new, %d already in catalogue).', $preview['new_count'], $preview['existing_count']);
+            }
+            flash_set('success', $msg);
+        }
         header('Location: ' . url('admin/bulk_products.php?tab=waiting_room'));
         exit;
     }
@@ -352,16 +361,19 @@ admin_head('Bulk Product Management', 'bulk_products');
   <!-- TAB CONTENT 2: LIVE WAITING ROOM (STAGING AREA WITH IMAGE ATTACHMENT) -->
   <?php elseif ($tab === 'waiting_room' && $waitingRoom && !empty($waitingRoom['items'])): ?>
     <?php
-    $items = $waitingRoom['items'];
-    $withImg = 0;
-    $noImg   = 0;
+    $items         = $waitingRoom['items'];
+    $withImg       = 0;
+    $noImg         = 0;
     $lingerieCount = 0;
     $instCount     = 0;
+    $existingCount = 0;
+    $newCount      = 0;
 
     foreach ($items as $it) {
         $hasPhoto = !empty($it['data']['image_url']);
         if ($hasPhoto) $withImg++; else $noImg++;
         if (($it['data']['department'] ?? '') === 'lingerie') $lingerieCount++; else $instCount++;
+        if (!empty($it['is_existing'])) $existingCount++; else $newCount++;
     }
     ?>
 
@@ -391,11 +403,41 @@ admin_head('Bulk Product Management', 'bulk_products');
           </form>
         </div>
 
+        <!-- Existing Products Alert & Filter-Out Banner -->
+        <div id="existingBanner" class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-3 <?= $existingCount === 0 ? 'hidden' : '' ?>">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-amber-600 text-2xl">info</span>
+            <div>
+              <span class="font-bold text-on-surface text-sm block">
+                <span id="existingBannerCount"><?= $existingCount ?></span> already existing product(s) detected in this sheet
+              </span>
+              <span class="text-xs text-on-surface-variant block">
+                These items already match an existing SKU, title, or slug in your live catalogue. You can inspect them or filter them out before committing.
+              </span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btnShowOnlyExisting" class="px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-900 bg-amber-500/20 hover:bg-amber-500/30 text-xs font-bold uppercase tracking-wider transition">
+              Show Existing (<span id="existingBtnCount"><?= $existingCount ?></span>)
+            </button>
+            <button type="button" id="btnRemoveAllExisting" class="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 shadow-xs transition">
+              <span class="material-symbols-outlined text-sm">filter_alt_off</span>
+              Filter Out &amp; Remove (<span id="existingRemoveCount"><?= $existingCount ?></span>)
+            </button>
+          </div>
+        </div>
+
         <!-- Filter Bar & Search -->
         <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-outline-variant">
           <div class="flex flex-wrap items-center gap-2" id="waitingFilters">
             <button type="button" data-filter="all" class="filter-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-primary text-on-primary transition-colors">
               All (<span id="countAll"><?= count($items) ?></span>)
+            </button>
+            <button type="button" data-filter="new_only" class="filter-btn px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors">
+              New Only (<span id="countNew"><?= $newCount ?></span>)
+            </button>
+            <button type="button" data-filter="existing" id="filterBtnExisting" class="filter-btn px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-500/20 text-amber-900 border border-amber-500/40 hover:bg-amber-500/30 transition-colors <?= $existingCount === 0 ? 'hidden' : '' ?>">
+              Existing (<span id="countExisting"><?= $existingCount ?></span>)
             </button>
             <button type="button" data-filter="missing_img" class="filter-btn px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors">
               Needs Photo (<span id="countNoImg"><?= $noImg ?></span>)
@@ -427,16 +469,20 @@ admin_head('Bulk Product Management', 'bulk_products');
         <div class="space-y-4" id="waitingItemsContainer">
           <?php foreach ($items as $idx => $item): ?>
             <?php
-            $d = $item['data'];
-            $img = trim((string) $d['image_url']);
-            $hasImg = $img !== '';
-            $galleryStr = implode(' | ', $d['gallery_images'] ?? []);
+            $d            = $item['data'];
+            $img          = trim((string) $d['image_url']);
+            $hasImg       = $img !== '';
+            $galleryStr   = implode(' | ', $d['gallery_images'] ?? []);
+            $isExisting   = !empty($item['is_existing']);
+            $existingProd = $item['existing_product'] ?? null;
+            $matchReason  = $item['match_reason'] ?? '';
             ?>
-            <div class="staged-card bg-surface-container-lowest rounded-2xl shadow-xs border border-outline-variant/60 p-5 transition-all hover:border-primary/50"
+            <div class="staged-card bg-surface-container-lowest rounded-2xl shadow-xs border p-5 transition-all <?= $isExisting ? 'border-amber-500/60 bg-amber-500/[0.02]' : 'border-outline-variant/60 hover:border-primary/50' ?>"
                  data-dept="<?= e($d['department']) ?>"
                  data-has-img="<?= $hasImg ? '1' : '0' ?>"
                  data-name="<?= e(strtolower($d['name'])) ?>"
-                 data-sku="<?= e(strtolower($d['sku'])) ?>">
+                 data-sku="<?= e(strtolower($d['sku'])) ?>"
+                 data-is-existing="<?= $isExisting ? '1' : '0' ?>">
 
               <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
@@ -485,13 +531,24 @@ admin_head('Bulk Product Management', 'bulk_products');
 
                 <!-- 2. Product Details & Taxonomy (7 cols) -->
                 <div class="lg:col-span-7 space-y-4">
-                  <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-2 flex-wrap">
                     <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase bg-surface-container-high text-on-surface-variant">
                       Item #<?= $idx + 1 ?>
                     </span>
                     <span class="photo-badge px-2 py-0.5 rounded text-[11px] font-bold uppercase <?= $hasImg ? 'bg-secondary-fixed text-on-secondary-fixed' : 'bg-surface-container text-outline' ?>">
                       <?= $hasImg ? 'Photo Attached' : 'No Photo' ?>
                     </span>
+                    <?php if ($isExisting): ?>
+                      <span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-amber-500/20 text-amber-900 border border-amber-500/30 inline-flex items-center gap-1"
+                            title="Already in store (<?= e($matchReason) ?>)">
+                        <span class="material-symbols-outlined text-xs">sync</span>
+                        Already in Catalogue: <?= e($existingProd['sku'] ?? 'matched by title') ?>
+                      </span>
+                    <?php else: ?>
+                      <span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-primary-fixed text-primary text-[10px]">
+                        New Item
+                      </span>
+                    <?php endif; ?>
                   </div>
 
                   <!-- Product Name & Department -->
@@ -617,11 +674,14 @@ admin_head('Bulk Product Management', 'bulk_products');
               <span class="font-headline-sm text-headline-sm font-bold text-on-surface block">
                 <span id="stagedCount"><?= count($items) ?></span> Products Ready
               </span>
-              <span class="text-xs text-on-surface-variant">
-                Strategy: Upsert (updates matching SKUs, registers new items).
-              </span>
+              <div class="flex items-center gap-2 mt-0.5">
+                <label for="importModeSelect" class="text-xs text-on-surface-variant font-medium">Strategy:</label>
+                <select name="import_mode" id="importModeSelect" class="text-xs py-1 px-2 border border-outline-variant rounded bg-surface font-semibold text-on-surface focus:border-primary outline-none">
+                  <option value="upsert">Upsert (Update matching + insert new)</option>
+                  <option value="insert_only">Insert New Only (skip any existing items)</option>
+                </select>
+              </div>
             </div>
-            <input type="hidden" name="import_mode" value="upsert" />
             <input type="hidden" name="auto_taxonomy" value="1" />
           </div>
 
@@ -669,6 +729,17 @@ admin_head('Bulk Product Management', 'bulk_products');
                   </span>
                 </div>
               </div>
+            </div>
+
+            <!-- Existing Products Auto-Filter Checkbox -->
+            <div class="p-3 bg-surface-container rounded-xl border border-outline-variant/50">
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="filter_existing" value="1" class="mt-0.5 w-4 h-4 text-primary rounded border-outline-variant focus:ring-primary" />
+                <div>
+                  <span class="font-body-sm text-body-sm font-bold text-on-surface block">Filter out already existing products</span>
+                  <span class="font-body-xs text-xs text-on-surface-variant block">Automatically detect and exclude products that already exist in the live catalogue by SKU, title, or slug.</span>
+                </div>
+              </label>
             </div>
 
             <!-- Alternative: Paste CSV text -->
@@ -961,19 +1032,42 @@ admin_head('Bulk Product Management', 'bulk_products');
       const allCards = document.querySelectorAll('.staged-card');
       let withImg = 0;
       let noImg = 0;
+      let existingCount = 0;
+      let newCount = 0;
       allCards.forEach(function (c) {
         if (c.getAttribute('data-has-img') === '1') withImg++; else noImg++;
+        if (c.getAttribute('data-is-existing') === '1') existingCount++; else newCount++;
       });
 
       const countAll = document.getElementById('countAll');
       const countWith = document.getElementById('countWithImg');
       const countNo = document.getElementById('countNoImg');
+      const countNew = document.getElementById('countNew');
+      const countExisting = document.getElementById('countExisting');
+      const existingBtnCount = document.getElementById('existingBtnCount');
+      const existingRemoveCount = document.getElementById('existingRemoveCount');
+      const existingBannerCount = document.getElementById('existingBannerCount');
+      const existingBanner = document.getElementById('existingBanner');
+      const filterBtnExisting = document.getElementById('filterBtnExisting');
       const stagedCount = document.getElementById('stagedCount');
 
       if (countAll) countAll.textContent = allCards.length;
       if (countWith) countWith.textContent = withImg;
       if (countNo) countNo.textContent = noImg;
+      if (countNew) countNew.textContent = newCount;
+      if (countExisting) countExisting.textContent = existingCount;
+      if (existingBtnCount) existingBtnCount.textContent = existingCount;
+      if (existingRemoveCount) existingRemoveCount.textContent = existingCount;
+      if (existingBannerCount) existingBannerCount.textContent = existingCount;
       if (stagedCount) stagedCount.textContent = allCards.length;
+
+      if (existingCount === 0) {
+        if (existingBanner) existingBanner.classList.add('hidden');
+        if (filterBtnExisting) filterBtnExisting.classList.add('hidden');
+      } else {
+        if (existingBanner) existingBanner.classList.remove('hidden');
+        if (filterBtnExisting) filterBtnExisting.classList.remove('hidden');
+      }
     }
 
     // 4. Filtering in Waiting Room
@@ -986,14 +1080,17 @@ admin_head('Bulk Product Management', 'bulk_products');
       const searchVal  = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
       document.querySelectorAll('.staged-card').forEach(function (card) {
-        const hasImg = card.getAttribute('data-has-img') === '1';
-        const dept   = card.getAttribute('data-dept');
-        const name   = card.getAttribute('data-name') || '';
-        const sku    = card.getAttribute('data-sku') || '';
+        const hasImg     = card.getAttribute('data-has-img') === '1';
+        const isExisting = card.getAttribute('data-is-existing') === '1';
+        const dept       = card.getAttribute('data-dept');
+        const name       = card.getAttribute('data-name') || '';
+        const sku        = card.getAttribute('data-sku') || '';
 
         let matchFilter = true;
         if (filterMode === 'missing_img') matchFilter = !hasImg;
         else if (filterMode === 'has_img') matchFilter = hasImg;
+        else if (filterMode === 'new_only') matchFilter = !isExisting;
+        else if (filterMode === 'existing') matchFilter = isExisting;
         else if (filterMode === 'lingerie') matchFilter = (dept === 'lingerie');
         else if (filterMode === 'instruments') matchFilter = (dept === 'instruments');
 
@@ -1024,6 +1121,32 @@ admin_head('Bulk Product Management', 'bulk_products');
 
     if (searchInput) {
       searchInput.addEventListener('input', applyFilters);
+    }
+
+    // Existing products quick filter & removal handlers
+    const btnRemoveExisting = document.getElementById('btnRemoveAllExisting');
+    if (btnRemoveExisting) {
+      btnRemoveExisting.addEventListener('click', function () {
+        const existingCards = document.querySelectorAll('.staged-card[data-is-existing="1"]');
+        if (existingCards.length === 0) return;
+        if (!confirm('Remove all ' + existingCards.length + ' already-existing product(s) from the Waiting Room?\n\nOnly brand-new products will remain for publishing.')) {
+          return;
+        }
+        existingCards.forEach(function (card) {
+          card.remove();
+        });
+        updateCounters();
+        const allBtn = document.querySelector('#waitingFilters .filter-btn[data-filter="all"]');
+        if (allBtn) allBtn.click();
+      });
+    }
+
+    const btnShowExisting = document.getElementById('btnShowOnlyExisting');
+    if (btnShowExisting) {
+      btnShowExisting.addEventListener('click', function () {
+        const existingFilterBtn = document.querySelector('#waitingFilters .filter-btn[data-filter="existing"]');
+        if (existingFilterBtn) existingFilterBtn.click();
+      });
     }
 
     // 5. Serialize Cards into JSON on Commit to bypass PHP max_input_vars limit
