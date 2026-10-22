@@ -46,3 +46,15 @@ RewriteRule ^sitemap\.xml$ sitemap.php [L]
 RewriteCond %{HTTPS} !=on
 RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$
 RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ------------------------------------------------------------- PHP configuration
+<IfModule mod_php.c>
+    php_value max_input_vars 10000
+</IfModule>
+<IfModule mod_php7.c>
+    php_value max_input_vars 10000
+</IfModule>
+<IfModule mod_php8.c>
+    php_value max_input_vars 10000
+</IfModule>
+

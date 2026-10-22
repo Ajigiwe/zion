@@ -683,10 +683,12 @@ admin_head('Telegram Intake', 'intake');
                 <td class="p-3 font-mono text-xs text-on-surface-variant"><?= (int) $b['chat_id'] ?></td>
                 <td class="p-3 font-body-sm text-body-sm text-on-surface-variant"><?= e((string) $b['created_at']) ?></td>
                 <td class="p-3 text-right whitespace-nowrap">
-                  <?php if ($b['status'] === 'pending'): ?>
+                  <?php if ($b['status'] !== 'discarded'): ?>
                     <?php if ($b['sheet_name'] !== ''): ?>
                       <a href="<?= e(url('admin/intake.php?review=' . (int) $b['id'])) ?>"
-                         class="font-label-nav text-label-nav uppercase tracking-wider text-primary hover:underline">Review &amp; match</a>
+                         class="font-label-nav text-label-nav uppercase tracking-wider text-primary hover:underline">
+                        <?= $b['status'] === 'claimed' ? 'Re-open batch' : 'Review &amp; match' ?>
+                      </a>
                     <?php else: ?>
                       <span class="font-body-sm text-body-sm text-outline">waiting for sheet</span>
                     <?php endif; ?>
@@ -699,7 +701,7 @@ admin_head('Telegram Intake', 'intake');
                     </form>
                   <?php else: ?>
                     <span class="font-body-sm text-body-sm text-on-surface-variant">
-                      <?= $b['status'] === 'claimed' ? 'sent to Waiting Room' : 'discarded' ?>
+                      discarded
                     </span>
                   <?php endif; ?>
                 </td>

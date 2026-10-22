@@ -113,7 +113,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     // 2. COMMIT WAITING ROOM TO LIVE CATALOGUE
     if ($action === 'commit_waiting_room') {
-        $postedItems = (array) ($_POST['items'] ?? []);
+        $rawJson = trim((string) ($_POST['items_json'] ?? ''));
+        if ($rawJson !== '') {
+            $decoded = json_decode($rawJson, true);
+            $postedItems = is_array($decoded) ? $decoded : [];
+        } else {
+            $postedItems = (array) ($_POST['items'] ?? []);
+        }
+
         if ($postedItems === []) {
             flash_set('error', 'No products found in the submission.');
             header('Location: ' . url('admin/bulk_products.php?tab=waiting_room'));
@@ -147,8 +154,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 'description'       => trim((string) ($item['description'] ?? '')),
                 'image_url'         => trim((string) ($item['image_url'] ?? '')),
                 'gallery_images'    => trim((string) ($item['gallery_images'] ?? '')),
-                'is_active'         => isset($item['is_active']) ? '1' : '0',
-                'is_featured'       => isset($item['is_featured']) ? '1' : '0',
+                'is_active'         => (!empty($item['is_active']) && (string) $item['is_active'] !== '0') ? '1' : '0',
+                'is_featured'       => (!empty($item['is_featured']) && (string) $item['is_featured'] !== '0') ? '1' : '0',
                 'variants'          => trim((string) ($item['variants'] ?? '')),
                 'specs'             => trim((string) ($item['specs'] ?? '')),
                 'bundles'           => trim((string) ($item['bundles'] ?? '')),
@@ -415,6 +422,7 @@ admin_head('Bulk Product Management', 'bulk_products');
       <form id="waitingRoomForm" method="post" action="<?= e(url('admin/bulk_products.php')) ?>" class="space-y-6">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="commit_waiting_room" />
+        <input type="hidden" name="items_json" id="waitingItemsJson" value="" />
 
         <div class="space-y-4" id="waitingItemsContainer">
           <?php foreach ($items as $idx => $item): ?>
@@ -1016,6 +1024,60 @@ admin_head('Bulk Product Management', 'bulk_products');
 
     if (searchInput) {
       searchInput.addEventListener('input', applyFilters);
+    }
+
+    // 5. Serialize Cards into JSON on Commit to bypass PHP max_input_vars limit
+    const waitingForm = document.getElementById('waitingRoomForm');
+    if (waitingForm) {
+      waitingForm.addEventListener('submit', function () {
+        const cards = waitingForm.querySelectorAll('.staged-card');
+        const items = [];
+        cards.forEach(function (card) {
+          const getVal = function (selector) {
+            const el = card.querySelector(selector);
+            return el ? el.value.trim() : '';
+          };
+          const getChecked = function (selector) {
+            const el = card.querySelector(selector);
+            return (el && el.checked) ? 1 : 0;
+          };
+
+          items.push({
+            image_url: getVal('.input-image-url'),
+            name: getVal('input[name*="[name]"]'),
+            department: getVal('select[name*="[department]"]'),
+            price: getVal('input[name*="[price]"]'),
+            compare_at_price: getVal('input[name*="[compare_at_price]"]'),
+            stock: getVal('input[name*="[stock]"]'),
+            sku: getVal('input[name*="[sku]"]'),
+            category: getVal('input[name*="[category]"]'),
+            brand: getVal('input[name*="[brand]"]'),
+            badge: getVal('input[name*="[badge]"]'),
+            gallery_images: getVal('input[name*="[gallery_images]"]'),
+            short_description: getVal('input[name*="[short_description]"]'),
+            description: getVal('textarea[name*="[description]"]'),
+            variants: getVal('input[name*="[variants]"]'),
+            specs: getVal('input[name*="[specs]"]'),
+            bundles: getVal('input[name*="[bundles]"]'),
+            is_active: getChecked('input[name*="[is_active]"]'),
+            is_featured: getChecked('input[name*="[is_featured]"]')
+          });
+        });
+
+        const jsonInput = document.getElementById('waitingItemsJson');
+        if (jsonInput) {
+          jsonInput.value = JSON.stringify(items);
+        }
+
+        // Strip name attributes from card inputs so PHP only receives 4 POST variables instead of thousands
+        cards.forEach(function (card) {
+          card.querySelectorAll('input, select, textarea').forEach(function (inp) {
+            if (inp.name && inp.name.startsWith('items[')) {
+              inp.removeAttribute('name');
+            }
+          });
+        });
+      });
     }
   });
 </script>
