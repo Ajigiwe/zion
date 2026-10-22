@@ -52,6 +52,12 @@ function intake_sku_key(string $sku): string
  * product's gallery; a photo sent alone is its own shot. Caption of a shot =
  * first non-empty caption among its members. Input order (message_id) wins.
  *
+ * Exception - a captionless album is NOT one product. The phone flow saves a
+ * WhatsApp batch to the gallery and forwards it as a single Telegram album,
+ * which would otherwise glue every product of the batch onto one row. No
+ * caption means nothing groups them, so each member becomes its own shot and
+ * the order fallback lines them up against the sheet rows instead.
+ *
  * @param list<array{file_path: string, caption?: string, media_group?: string, id?: int}> $items
  * @return list<array{paths: list<string>, caption: string}>
  */
@@ -79,7 +85,14 @@ function intake_group_shots(array $items): array
     }
     $shots = [];
     foreach ($order as $key) {
-        $shots[] = $groups[$key];
+        $group = $groups[$key];
+        if ($key[0] === 'g' && $group['caption'] === '') {
+            foreach ($group['paths'] as $one) {
+                $shots[] = ['paths' => [$one], 'caption' => ''];
+            }
+            continue;
+        }
+        $shots[] = $group;
     }
     return $shots;
 }

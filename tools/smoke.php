@@ -336,6 +336,42 @@ $tie = intake_match(
 );
 okk('ambiguous caption is left for the human, not guessed', $tie['stats']['unmatched'] === 2 && $tie['stats']['leftovers'] === 1, json_encode($tie['stats']));
 
+// Phone flow: a whole saved batch arrives as one captionless album.
+$split = intake_group_shots([
+    ['file_path' => 'storage/uploads/a.jpg', 'caption' => '', 'media_group' => 'ALB-X', 'id' => 1],
+    ['file_path' => 'storage/uploads/b.jpg', 'caption' => '', 'media_group' => 'ALB-X', 'id' => 2],
+    ['file_path' => 'storage/uploads/c.jpg', 'caption' => 'Yamaha Drumsticks', 'media_group' => 'ALB-Y', 'id' => 3],
+    ['file_path' => 'storage/uploads/d.jpg', 'caption' => '', 'media_group' => 'ALB-Y', 'id' => 4],
+    ['file_path' => 'storage/uploads/e.jpg', 'caption' => '', 'media_group' => '', 'id' => 5],
+]);
+okk('captionless album splits into single shots, in order',
+    count($split) === 4
+    && ($split[0]['paths'] ?? []) === ['storage/uploads/a.jpg']
+    && ($split[1]['paths'] ?? []) === ['storage/uploads/b.jpg']
+    && $split[0]['caption'] === '' && $split[1]['caption'] === '',
+    json_encode($split));
+okk('captioned album still means one product with a gallery',
+    ($split[2]['paths'] ?? []) === ['storage/uploads/c.jpg', 'storage/uploads/d.jpg']
+    && $split[2]['caption'] === 'Yamaha Drumsticks'
+    && ($split[3]['paths'] ?? []) === ['storage/uploads/e.jpg'],
+    json_encode($split[2] ?? null));
+
+$phoneFlow = intake_match(
+    [['data' => ['sku' => '', 'name' => 'Red Bass Guitar']], ['data' => ['sku' => '', 'name' => 'Horns Amp']], ['data' => ['sku' => '', 'name' => 'Mic Stand']]],
+    [
+        ['id' => 20, 'file_path' => 'storage/uploads/p1.jpg', 'caption' => '', 'media_group' => 'BULK'],
+        ['id' => 21, 'file_path' => 'storage/uploads/p2.jpg', 'caption' => '', 'media_group' => 'BULK'],
+        ['id' => 22, 'file_path' => 'storage/uploads/p3.jpg', 'caption' => '', 'media_group' => 'BULK'],
+    ],
+    ['order_fallback' => true]
+);
+okk('captionless batch order-matches one photo per row',
+    ($phoneFlow['assignments'][0]['paths'] ?? []) === ['storage/uploads/p1.jpg']
+    && ($phoneFlow['assignments'][1]['paths'] ?? []) === ['storage/uploads/p2.jpg']
+    && ($phoneFlow['assignments'][2]['paths'] ?? []) === ['storage/uploads/p3.jpg']
+    && $phoneFlow['stats']['leftovers'] === 0,
+    json_encode($phoneFlow['assignments']));
+
 // The .xlsx reader (shared strings + inline strings + numbers).
 $xlsx = tempnam(sys_get_temp_dir(), 'smkxlsx') . '.xlsx';
 $zip  = new ZipArchive();

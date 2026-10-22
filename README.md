@@ -177,6 +177,15 @@ anything goes live.
    photos - ideally **one album per product, captioned with the product name**
    (the caption drives matching; a SKU in the caption matches even better).
    `/status` shows what is staged, `/clear` throws the batch away.
+
+   When captions are impractical (forwarding a WhatsApp batch from a phone,
+   where every share is one product at a time), use the phone flow: save the
+   whole batch to the phone gallery in one go, then send it from Telegram as
+   a **single captionless album**. A captionless album is split back into
+   individual photos and matched against the sheet rows **in send order**, so
+   the sheet row order should follow the photo order. The admin review screen
+   shows every thumbnail, so a misalignment is visible before commit. An album
+   *with* a caption keeps meaning one product with a gallery.
 5. Admin - **Telegram Intake**: review the match (by SKU, caption or send
    order; leftovers attach by hand), then *Send to Waiting Room* and commit as
    usual in **Bulk Products**. The bot never publishes anything by itself -
