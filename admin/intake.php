@@ -236,6 +236,7 @@ admin_head('Telegram Intake', 'intake');
           <script type="application/json" id="intakeGalleryData">
             <?= json_encode(array_map(static fn($it) => [
                 'path'    => (string) $it['file_path'],
+                'url'     => img_url((string) $it['file_path']),
                 'caption' => (string) ($it['caption'] ?? ''),
             ], $photos), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>
           </script>
@@ -373,18 +374,19 @@ admin_head('Telegram Intake', 'intake');
           gap: 12px;
         }
         .gallery-item {
-          background: var(--md-sys-color-surface-container, #f3f3f3);
+          background: var(--md-sys-color-surface, #ffffff);
           border: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
-          border-radius: 8px;
+          border-radius: 10px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
           cursor: pointer;
+          min-height: 190px;
           transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
         }
         .gallery-item:hover, .gallery-item:focus {
           transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+          box-shadow: 0 4px 14px rgba(0,0,0,0.12);
           border-color: var(--md-sys-color-primary, #6750a4);
           outline: none;
         }
@@ -392,15 +394,31 @@ admin_head('Telegram Intake', 'intake');
           border-color: var(--md-sys-color-primary, #6750a4);
           box-shadow: 0 0 0 2px var(--md-sys-color-primary, #6750a4);
         }
-        .gallery-item-img {
+        .gallery-thumb-wrap {
           width: 100%;
-          aspect-ratio: 4/3;
-          object-fit: cover;
+          height: 135px;
+          position: relative;
           background: var(--md-sys-color-surface-container-high, #e9e9e9);
+          overflow: hidden;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .gallery-thumb-wrap img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
         }
         .gallery-item-meta {
           padding: 8px 10px;
           min-width: 0;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          background: var(--md-sys-color-surface, #ffffff);
         }
         .gallery-caption {
           font-size: 11px;
@@ -459,13 +477,20 @@ admin_head('Telegram Intake', 'intake');
             grid.innerHTML = allPhotos.map((photo) => {
               const cap = photo.caption || '';
               const short = cap.length > 60 ? cap.slice(0, 57) + '…' : cap;
-              const filename = photo.path.split('/').pop();
+              const filename = (photo.path || '').split('/').pop() || 'photo';
               const isSelected = currentVal !== '' && currentVal === photo.path;
+              const src = photo.url || imgUrl(photo.path);
               return `<div class="gallery-item ${isSelected ? 'selected' : ''}" data-path="${photo.path}" tabindex="0" role="button" aria-label="${short || filename}">
-                <img src="${imgUrl(photo.path)}" alt="${short || filename}" class="gallery-item-img" loading="lazy">
+                <div class="gallery-thumb-wrap">
+                  <img src="${src}" alt="${short || filename}" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+                  <div class="gallery-fallback absolute inset-0 flex-col items-center justify-center text-on-surface-variant/60 gap-1 bg-surface-container p-2 text-center" style="display:none;">
+                    <span class="material-symbols-outlined text-2xl">image_not_supported</span>
+                    <span class="text-[10px] uppercase font-bold tracking-wider">No preview</span>
+                  </div>
+                </div>
                 <div class="gallery-item-meta">
-                  <div class="font-mono text-xs text-on-surface truncate font-semibold">${filename}</div>
-                  ${short ? `<div class="gallery-caption mt-0.5">${short}</div>` : ''}
+                  <div class="font-mono text-xs text-on-surface font-semibold truncate" title="${filename}">${filename}</div>
+                  ${short ? `<div class="gallery-caption mt-0.5" title="${cap}">${short}</div>` : ''}
                 </div>
               </div>`;
             }).join('');
