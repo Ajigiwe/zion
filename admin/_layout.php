@@ -32,6 +32,7 @@ function admin_nav_items(): array
         'customers'     => ['group', 'Customers'],
         'messages'      => ['mail', 'Messages'],
         'backup'        => ['database', 'Backup & Wipe'],
+        'deploy'        => ['rocket_launch', 'Deploy Engine'],
         'settings'      => ['settings', 'Settings'],
     ];
 }
