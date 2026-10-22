@@ -223,11 +223,19 @@ admin_head('Telegram Intake', 'intake');
         <input type="hidden" name="action" value="send_to_waiting_room"/>
         <input type="hidden" name="batch_id" value="<?= (int) $batch['id'] ?>"/>
 
-        <div class="mb-4 flex items-center gap-2 font-body-sm text-body-sm text-on-surface-variant">
-          <input type="checkbox" id="useOrder" name="use_order" value="1" <?= $useOrder ? 'checked' : '' ?>/>
-          <label for="useOrder">Also pair leftover photos with leftover rows in the order they were sent
+        <div class="mb-4 flex flex-wrap items-center gap-4 font-body-sm text-body-sm text-on-surface-variant">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="useOrder" name="use_order" value="1" <?= $useOrder ? 'checked' : '' ?>/>
+            <span>Also pair leftover photos with leftover rows in send order</span>
             <a href="<?= e(url('admin/intake.php?review=' . (int) $batch['id'] . '&order=' . ($useOrder ? '0' : '1'))) ?>"
-               class="text-primary hover:underline">(re-match)</a></label>
+               class="text-primary hover:underline">(re-match)</a>
+          </label>
+          <button type="button" id="openGalleryBtn"
+                  class="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container hover:bg-surface-container-high transition font-label-nav text-label-nav uppercase tracking-wider"
+                  data-leftovers="<?= e(json_encode($match['leftover'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
+                  data-captions="<?= e(json_encode($captions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>">
+            Open gallery picker
+          </button>
         </div>
 
         <div class="overflow-x-auto rounded-lg border border-outline-variant">
@@ -249,16 +257,17 @@ admin_head('Telegram Intake', 'intake');
                 $method   = $match['assignments'][$i]['method'] ?? '';
                 $invalid  = empty($res['valid']);
               ?>
-                <tr class="border-t border-outline-variant align-top <?= $invalid ? 'bg-[#fdecea]' : '' ?>">
+                <tr class="border-t border-outline-variant align-top <?= $invalid ? 'bg-[#fdecea]' : '' ?>" data-row="<?= $i ?>">
                   <td class="p-3 font-mono text-xs text-on-surface-variant"><?= $i + 1 ?></td>
                   <td class="p-3">
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap">
                       <?php foreach ($auto as $path): ?>
                         <img src="<?= e(img_url($path)) ?>" alt=""
-                             class="w-14 h-16 object-cover rounded border border-outline-variant bg-surface-container"/>
+                             class="w-14 h-16 object-cover rounded border border-outline-variant bg-surface-container"
+                             loading="lazy"/>
                       <?php endforeach; ?>
                       <?php if ($auto === []): ?>
-                        <span class="text-[11px] text-outline">none</span>
+                        <span class="text-[11px] text-outline self-center">none</span>
                       <?php endif; ?>
                     </div>
                   </td>
@@ -268,7 +277,7 @@ admin_head('Telegram Intake', 'intake');
                     <?php if (!empty($res['warnings'])): ?>
                       <div class="text-[11px] text-[#8a5a00] mt-1">
                         <?php foreach ($res['warnings'] as $w): ?>
-                          <div><?= $w /* already escaped by the bulk service */ ?></div>
+                          <div><?= $w ?></div>
                         <?php endforeach; ?>
                       </div>
                     <?php endif; ?>
@@ -276,7 +285,8 @@ admin_head('Telegram Intake', 'intake');
                   <td class="p-3"><?= intake_method_pill($method) ?></td>
                   <td class="p-3">
                     <select name="assign[<?= $i ?>]"
-                            class="w-44 px-2 py-1.5 border border-outline-variant rounded font-body-sm text-body-sm bg-surface focus:border-primary outline-none">
+                            class="w-44 px-2 py-1.5 border border-outline-variant rounded font-body-sm text-body-sm bg-surface focus:border-primary outline-none row-assign"
+                            data-row="<?= $i ?>">
                       <option value="">auto<?= $auto !== [] ? ' - ' . count($auto) . ' photo(s)' : ' - none' ?></option>
                       <?php foreach ($match['leftover'] as $path): ?>
                         <option value="<?= e($path) ?>">
@@ -285,6 +295,10 @@ admin_head('Telegram Intake', 'intake');
                       <?php endforeach; ?>
                       <option value="none">no image</option>
                     </select>
+                    <button type="button" class="ml-2 px-2 py-1 text-[11px] text-primary hover:underline gallery-pick"
+                            data-row="<?= $i ?>" aria-label="Pick from gallery">
+                      pick…
+                    </button>
                   </td>
                 </tr>
               <?php endforeach; ?>
@@ -311,6 +325,145 @@ admin_head('Telegram Intake', 'intake');
           Discard this batch instead
         </button>
       </form>
+
+      <!-- Gallery picker modal -->
+      <div id="galleryModal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
+        <div class="absolute inset-0 bg-black/70" id="galleryBackdrop"></div>
+        <div class="absolute inset-4 md:inset-10 bg-surface rounded-2xl shadow-xl flex flex-col max-h-full"
+             style="animation: galleryIn 150ms ease-out;">
+          <header class="flex items-center justify-between p-4 border-b border-outline-variant sticky top-0 bg-surface rounded-t-2xl z-10">
+            <h2 id="galleryTitle" class="text-lg font-semibold text-on-surface">Pick a photo for <span id="galleryRowName"></span></h2>
+            <button type="button" id="galleryClose" class="p-2 rounded-full hover:bg-surface-container text-on-surface-variant"
+                    aria-label="Close gallery picker">&times;</button>
+          </header>
+          <div class="p-4 overflow-y-auto flex-1" id="galleryGrid">
+            <p class="text-center text-on-surface-variant py-8">Loading…</p>
+          </div>
+          <footer class="p-4 border-t border-outline-variant sticky bottom-0 bg-surface rounded-b-2xl">
+            <p class="text-[11px] text-on-surface-variant text-center">
+              Click a photo to assign it. <kbd class="px-1.5 py-0.5 bg-surface-container rounded border border-outline-variant">Esc</kbd> to close.
+              <span id="galleryHint" class="ml-2"></span>
+            </p>
+          </footer>
+        </div>
+      </div>
+
+      <style>
+        @keyframes galleryIn { from {opacity:0; transform:scale(0.98);} to {opacity:1; transform:scale(1);} }
+        .gallery-img {cursor:pointer; transition:transform 120ms, box-shadow 120ms, border-color 120ms;}
+        .gallery-img:hover {transform:scale(1.02); box-shadow:0 8px 24px -8px black; z-index:1;}
+        .gallery-img.selected {border-color:var(--md-sys-color-primary, #6750a4); box-shadow:0 0 0 2px var(--md-sys-color-primary, #6750a4);}
+        .gallery-caption {font-size:11px; color:var(--md-sys-color-on-surface-variant); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+        .gallery-item {background:var(--md-sys-color-surface-container); border-radius:12px; overflow:hidden;}
+        .gallery-item.selected {background:var(--md-sys-color-primary-container);}
+      </style>
+
+      <script>
+        (function () {
+          const modal = document.getElementById('galleryModal');
+          const grid  = document.getElementById('galleryGrid');
+          const title = document.getElementById('galleryRowName');
+          const hint  = document.getElementById('galleryHint');
+          const closeBtn = document.getElementById('galleryClose');
+          const backdrop = document.getElementById('galleryBackdrop');
+          const openBtn = document.getElementById('openGalleryBtn');
+          const pickBtns = document.querySelectorAll('.gallery-pick');
+          const rowSelects = document.querySelectorAll('.row-assign');
+
+          let leftovers = [];
+          let captions = {};
+          let targetRow = null;
+
+          function parseData() {
+            if (openBtn) {
+              try { leftovers = JSON.parse(openBtn.dataset.leftovers || '[]'); } catch { leftovers = []; }
+              try { captions = JSON.parse(openBtn.dataset.captions || '{}'); } catch { captions = {}; }
+            }
+          }
+
+          function renderGrid(filterRow = null) {
+            if (leftovers.length === 0) {
+              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No leftover photos to pick from.</p>';
+              return;
+            }
+            grid.innerHTML = leftovers.map((path, idx) => {
+              const cap = captions[path] || '';
+              const short = cap.length > 50 ? cap.slice(0, 47) + '…' : cap;
+              const filename = path.split('/').pop();
+              return `<div class="gallery-item" data-path="${path}" tabindex="0" role="button" aria-label="${short || filename}">
+                <img src="${imgUrl(path)}" alt="${short || filename}" class="gallery-img w-full aspect-[4/3] object-cover" loading="lazy">
+                <div class="p-2">
+                  <div class="font-mono text-xs text-on-surface-variant">${filename}</div>
+                  ${short ? `<div class="gallery-caption">${short}</div>` : ''}
+                </div>
+              </div>`;
+            }).join('');
+
+            grid.querySelectorAll('.gallery-item').forEach(item => {
+              item.addEventListener('click', () => selectPhoto(item.dataset.path));
+              item.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectPhoto(item.dataset.path); }
+              });
+            });
+          }
+
+          function imgUrl(path) {
+            const base = document.querySelector('base')?.href || '';
+            return base + 'storage/uploads/' + path.replace(/^storage\/uploads\//, '');
+          }
+
+          function openModal(rowIdx) {
+            targetRow = rowIdx;
+            const row = document.querySelector(`tr[data-row="${rowIdx}"]`);
+            const name = row ? row.querySelector('td:nth-child(4)')?.textContent?.trim() : '';
+            title.textContent = name || `row ${rowIdx + 1}`;
+            parseData();
+            renderGrid();
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            setTimeout(() => grid.querySelector('.gallery-item')?.focus(), 50);
+          }
+
+          function closeModal() {
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+            targetRow = null;
+          }
+
+          function selectPhoto(path) {
+            if (targetRow === null) return;
+            const sel = document.querySelector(`select.row-assign[data-row="${targetRow}"]`);
+            if (sel) {
+              sel.value = path;
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            closeModal();
+          }
+
+          pickBtns.forEach(btn => btn.addEventListener('click', () => openModal(parseInt(btn.dataset.row, 10))));
+          openBtn?.addEventListener('click', () => openModal(
+            Math.max(...Array.from(rowSelects).map(s => parseInt(s.dataset.row, 10)), 0)
+          ));
+          closeBtn.addEventListener('click', closeModal);
+          backdrop.addEventListener('click', closeModal);
+          document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+          });
+
+          // Keyboard nav in grid
+          grid.addEventListener('keydown', e => {
+            const items = grid.querySelectorAll('.gallery-item');
+            if (!items.length) return;
+            const focused = document.activeElement;
+            const idx = Array.from(items).indexOf(focused);
+            if (idx === -1) return;
+            if (e.key === 'ArrowRight' && idx + 1 < items.length) { items[idx + 1].focus(); e.preventDefault(); }
+            else if (e.key === 'ArrowLeft' && idx > 0) { items[idx - 1].focus(); e.preventDefault(); }
+            else if (e.key === 'ArrowDown' && idx + 4 < items.length) { items[idx + 4].focus(); e.preventDefault(); }
+            else if (e.key === 'ArrowUp' && idx - 4 >= 0) { items[idx - 4].focus(); e.preventDefault(); }
+          });
+        })();
+      </script>
     <?php endif; ?>
 
   <?php else:
