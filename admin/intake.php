@@ -385,15 +385,18 @@ admin_head('Telegram Intake', 'intake');
           function parseData() {
             if (openBtn) {
               const raw = openBtn.dataset.allPhotos || '[]';
-              try { allPhotos = JSON.parse(raw); } catch (e) { allPhotos = []; }
+              console.log('[gallery] raw length:', raw.length, 'first 200:', raw.slice(0, 200));
+              try { allPhotos = JSON.parse(raw); } catch (e) { allPhotos = []; console.error('[gallery] parse error:', e); }
+              console.log('[gallery] parsed count:', allPhotos.length);
             }
           }
 
           function renderGrid(filterRow = null) {
             if (allPhotos.length === 0) {
-              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet.</p>';
+              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet. (parsed: 0)</p>';
               return;
             }
+            console.log('[gallery] rendering', allPhotos.length, 'photos');
             grid.innerHTML = allPhotos.map((photo, idx) => {
               const cap = photo.caption || '';
               const short = cap.length > 80 ? cap.slice(0, 77) + '…' : cap;
