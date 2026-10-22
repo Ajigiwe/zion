@@ -351,11 +351,12 @@ admin_head('Telegram Intake', 'intake');
 
       <style>
         @keyframes galleryIn { from {opacity:0; transform:scale(0.98);} to {opacity:1; transform:scale(1);} }
-        .gallery-img {cursor:pointer; transition:transform 120ms, box-shadow 120ms, border-color 120ms;}
+        #galleryGrid {display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:8px;}
+        .gallery-img {cursor:pointer; transition:transform 120ms, box-shadow 120ms, border-color 120ms; width:100%; aspect-ratio:1/1; object-fit:cover;}
         .gallery-img:hover {transform:scale(1.02); box-shadow:0 8px 24px -8px black; z-index:1;}
         .gallery-img.selected {border-color:var(--md-sys-color-primary, #6750a4); box-shadow:0 0 0 2px var(--md-sys-color-primary, #6750a4);}
-        .gallery-caption {font-size:11px; color:var(--md-sys-color-on-surface-variant); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
-        .gallery-item {background:var(--md-sys-color-surface-container); border-radius:12px; overflow:hidden;}
+        .gallery-caption {font-size:10px; color:var(--md-sys-color-on-surface-variant); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+        .gallery-item {background:var(--md-sys-color-surface-container); border-radius:8px; overflow:hidden; display:flex; flex-direction:column;}
         .gallery-item.selected {background:var(--md-sys-color-primary-container);}
       </style>
 
@@ -389,13 +390,13 @@ admin_head('Telegram Intake', 'intake');
             }
             grid.innerHTML = leftovers.map((path, idx) => {
               const cap = captions[path] || '';
-              const short = cap.length > 50 ? cap.slice(0, 47) + '…' : cap;
+              const short = cap.length > 60 ? cap.slice(0, 57) + '…' : cap;
               const filename = path.split('/').pop();
               return `<div class="gallery-item" data-path="${path}" tabindex="0" role="button" aria-label="${short || filename}">
-                <img src="${imgUrl(path)}" alt="${short || filename}" class="gallery-img w-full aspect-[4/3] object-cover" loading="lazy">
-                <div class="p-2">
-                  <div class="font-mono text-xs text-on-surface-variant">${filename}</div>
-                  ${short ? `<div class="gallery-caption">${short}</div>` : ''}
+                <img src="${imgUrl(path)}" alt="${short || filename}" class="gallery-img" loading="lazy">
+                <div class="p-1.5">
+                  <div class="font-mono text-[10px] text-on-surface-variant truncate">${filename}</div>
+                  ${short ? `<div class="gallery-caption truncate">${short}</div>` : ''}
                 </div>
               </div>`;
             }).join('');
