@@ -383,13 +383,16 @@ admin_head('Telegram Intake', 'intake');
 
           function parseData() {
             if (openBtn) {
-              try { allPhotos = JSON.parse(openBtn.dataset.allPhotos || '[]'); } catch { allPhotos = []; }
+              const raw = openBtn.dataset.allPhotos || '[]';
+              // Debug: show raw length in hint
+              hint.textContent = ` (raw: ${raw.length} chars)`;
+              try { allPhotos = JSON.parse(raw); } catch (e) { allPhotos = []; hint.textContent += ` parse error: ${e.message}`; }
             }
           }
 
           function renderGrid(filterRow = null) {
             if (allPhotos.length === 0) {
-              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet.</p>';
+              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet. Raw data: ' + (openBtn?.dataset.allPhotos?.length || 0) + ' chars</p>';
               return;
             }
             grid.innerHTML = allPhotos.map((photo, idx) => {
