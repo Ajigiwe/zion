@@ -233,11 +233,11 @@ admin_head('Telegram Intake', 'intake');
           <?php
             $allPhotosJson = json_encode(array_map(function($it) {
                 return ['path' => (string)$it['file_path'], 'caption' => (string)$it['caption']];
-            }, $items));
+            }, $items), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
           ?>
           <button type="button" id="openGalleryBtn"
                   class="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container hover:bg-surface-container-high transition font-label-nav text-label-nav uppercase tracking-wider"
-                  data-all-photos="<?= e($allPhotosJson) ?>"
+                  data-all-photos="<?= $allPhotosJson ?>"
                   data-base-url="<?= e(base_url('')) ?>">
             Open gallery picker (all <?= count($items) ?> photos)
           </button>
@@ -384,15 +384,13 @@ admin_head('Telegram Intake', 'intake');
           function parseData() {
             if (openBtn) {
               const raw = openBtn.dataset.allPhotos || '[]';
-              // Debug: show raw length in hint
-              hint.textContent = ` (raw: ${raw.length} chars)`;
-              try { allPhotos = JSON.parse(raw); } catch (e) { allPhotos = []; hint.textContent += ` parse error: ${e.message}`; }
+              try { allPhotos = JSON.parse(raw); } catch (e) { allPhotos = []; }
             }
           }
 
           function renderGrid(filterRow = null) {
             if (allPhotos.length === 0) {
-              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet. Raw data: ' + (openBtn?.dataset.allPhotos?.length || 0) + ' chars</p>';
+              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet.</p>';
               return;
             }
             grid.innerHTML = allPhotos.map((photo, idx) => {
