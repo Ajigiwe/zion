@@ -223,6 +223,7 @@ admin_head('Telegram Intake', 'intake');
       </div>
 
       <form method="post" action="<?= e(url('admin/intake.php')) ?>">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="send_to_waiting_room"/>
         <input type="hidden" name="batch_id" value="<?= (int) $batch['id'] ?>"/>
 
