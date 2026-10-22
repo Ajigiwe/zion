@@ -307,12 +307,13 @@ okk('album keeps both photos on row 2', count($match['assignments'][1]['paths'] 
 okk('row 3 matched by SKU', ($match['assignments'][2]['method'] ?? '') === 'sku', json_encode($match['assignments'][2] ?? null));
 okk('no leftovers with order fallback off', $match['stats']['unmatched'] === 0 && $match['stats']['leftovers'] === 0, json_encode($match['stats']));
 
-$pathsOk = count($items) === 4;
-foreach ($items as $it) {
+$photosOnly = array_filter($items, static fn($it) => (string)($it['media_group'] ?? '') !== 'sheet');
+$pathsOk = count($photosOnly) === 4;
+foreach ($photosOnly as $it) {
     $rel = (string) $it['file_path'];
     $pathsOk = $pathsOk && str_starts_with($rel, 'storage/uploads/') && is_file(smoke_root() . '/' . $rel);
 }
-okk('staged photos land in storage/uploads and exist on disk', $pathsOk, implode(',', array_column($items, 'file_path')));
+okk('staged photos land in storage/uploads and exist on disk', $pathsOk, implode(',', array_column($photosOnly, 'file_path')));
 
 // Order fallback on/off, and an ambiguous caption left for the human.
 $flat = [
@@ -401,11 +402,54 @@ if ($xlsxError === '') {
 }
 
 // Discard: the staged files must leave disk too.
-$staged  = array_column(intake_items($batchId), 'file_path');
+$staged  = array_column(array_filter(intake_items($batchId), static fn($it) => ($it['media_group'] ?? '') !== 'sheet'), 'file_path');
 $removed = intake_discard($batchId);
 $left    = array_filter($staged, static fn($p) => is_file(smoke_root() . '/' . $p));
 okk('discard deletes every staged photo', $removed === count($staged) && $left === [], 'removed=' . $removed . ' left=' . count($left));
 okk('discard marks the batch as discarded', (string) db_val('SELECT status FROM intake_batches WHERE id = ?', [$batchId]) === 'discarded');
+
+# new granular clear/undo commands (each on a fresh batch)
+
+# clearsheet
+$b1 = intake_new_batch($tgChat, 'clearsheet.csv');
+intake_set_sheet($b1, 'clearsheet.csv', "sku,name,price\nA,Prod A,10\nB,Prod B,20", 2);
+intake_add_sheet_marker($b1, 199, 'clearsheet.csv');
+$sendPhoto($tgCfg, $tgChat, 200, 'Prod A', '', $photoBytes);
+$sendPhoto($tgCfg, $tgChat, 201, 'Prod B', '', $photoBytes);
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 210, 'chat' => ['id' => $tgChat], 'text' => '/clearsheet']]);
+okk('/clearsheet removes sheet only', str_contains($r, 'Cleared sheet (2 row') && str_contains($r, 'Photos (2) kept'), $r);
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 211, 'chat' => ['id' => $tgChat], 'text' => '/status']]);
+okk('/status after clearsheet shows no sheet', str_contains($r, 'no sheet yet') && str_contains($r, 'Photos: 2'), $r);
+
+# clearphotos
+$b2 = intake_new_batch($tgChat, 'clearphotos.csv');
+intake_set_sheet($b2, 'clearphotos.csv', "sku,name,price\nC,Prod C,30\nD,Prod D,40", 2);
+intake_add_sheet_marker($b2, 299, 'clearphotos.csv');
+$sendPhoto($tgCfg, $tgChat, 300, 'Prod C', '', $photoBytes);
+$sendPhoto($tgCfg, $tgChat, 301, 'Prod D', '', $photoBytes);
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 310, 'chat' => ['id' => $tgChat], 'text' => '/clearphotos']]);
+okk('/clearphotos removes photos only', str_contains($r, 'Cleared 2 photo'), $r);
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 311, 'chat' => ['id' => $tgChat], 'text' => '/status']]);
+okk('/status after clearphotos shows sheet kept', str_contains($r, 'clearphotos.csv (2') && str_contains($r, 'Photos: 0'), $r);
+
+# undo - remove last photo, then another photo, then sheet, then nothing
+$b3 = intake_new_batch($tgChat, 'undo.csv');
+intake_set_sheet($b3, 'undo.csv', "sku,name,price\nE,Prod E,50", 1);
+intake_add_sheet_marker($b3, 399, 'undo.csv');
+$sendPhoto($tgCfg, $tgChat, 400, 'Prod E', '', $photoBytes);
+$sendPhoto($tgCfg, $tgChat, 401, 'Extra', '', $photoBytes);
+
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 410, 'chat' => ['id' => $tgChat], 'text' => '/undo']]);
+okk('/undo removes last photo', str_contains($r, 'Undone 1 message') && str_contains($r, 'Photos left: 1'), $r);
+
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 411, 'chat' => ['id' => $tgChat], 'text' => '/undo']]);
+okk('/undo removes second photo', str_contains($r, 'Undone 1 message') && str_contains($r, 'Photos left: 0') && str_contains($r, 'sheet intact'), $r);
+
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 412, 'chat' => ['id' => $tgChat], 'text' => '/undo']]);
+okk('/undo removes sheet', str_contains($r, 'Undone 1 message') && str_contains($r, 'Photos left: 0'), $r);
+
+$r = intake_dispatch($tgCfg, ['message' => ['message_id' => 413, 'chat' => ['id' => $tgChat], 'text' => '/undo']]);
+okk('/undo on empty says nothing to undo', str_contains($r, 'Nothing staged to undo'), $r);
 
 /* ---------------------------------------------------------------- summary */
 

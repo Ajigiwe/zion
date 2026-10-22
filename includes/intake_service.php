@@ -222,7 +222,11 @@ function intake_items(int $batchId): array
 function intake_photo_count(int $batchId): int
 {
     intake_tables();
-    return (int) db_val('SELECT COUNT(*) FROM intake_items WHERE batch_id = ?', [$batchId], 0);
+    return (int) db_val(
+        "SELECT COUNT(*) FROM intake_items WHERE batch_id = ? AND media_group <> 'sheet'",
+        [$batchId],
+        0
+    );
 }
 
 function intake_sheet_name(int $batchId): string
@@ -260,8 +264,83 @@ function intake_discard(int $batchId): int
             }
         }
     }
+    db_exec('DELETE FROM intake_items WHERE batch_id = ?', [$batchId]);
     db_exec("UPDATE intake_batches SET status = 'discarded', updated_at = NOW() WHERE id = ?", [$batchId]);
     return $removed;
+}
+
+/** Remove the sheet from a batch but keep staged photos. Returns rows cleared. */
+function intake_clear_sheet(int $batchId): int
+{
+    intake_tables();
+    $batch = db_one('SELECT * FROM intake_batches WHERE id = ?', [$batchId]);
+    if (!$batch) {
+        return 0;
+    }
+    db_exec(
+        "UPDATE intake_batches SET sheet_name = '', sheet_data = '', row_count = 0, updated_at = NOW() WHERE id = ?",
+        [$batchId]
+    );
+    # Also remove the sheet marker item
+    db_exec("DELETE FROM intake_items WHERE batch_id = ? AND media_group = 'sheet'", [$batchId]);
+    return (int) $batch['row_count'];
+}
+
+/** Add a sheet marker item (for undo ordering). Used by intake_ingest_sheet and tests. */
+function intake_add_sheet_marker(int $batchId, int $messageId, string $name): void
+{
+    intake_tables();
+    db_exec(
+        "INSERT INTO intake_items (batch_id, message_id, media_group, file_path, caption, created_at)
+         VALUES (?, ?, 'sheet', '', ?, NOW())",
+        [$batchId, $messageId, $name]
+    );
+}
+
+/** Remove all photos from a batch but keep the sheet. Returns photos removed. */
+function intake_clear_photos(int $batchId): int
+{
+    intake_tables();
+    $removed = 0;
+    $root    = dirname(__DIR__);
+    foreach (intake_items($batchId) as $item) {
+        $rel = (string) $item['file_path'];
+        if (str_starts_with($rel, 'storage/uploads/') && is_file($root . '/' . $rel)) {
+            if (@unlink($root . '/' . $rel)) {
+                $removed++;
+            }
+        }
+    }
+    db_exec('DELETE FROM intake_items WHERE batch_id = ?', [$batchId]);
+    return $removed;
+}
+
+/** Undo the most recent message (sheet or photo/album) in the active batch. */
+function intake_undo_last(int $chatId): array
+{
+    intake_tables();
+    $batch = intake_active_batch($chatId);
+    if (!$batch) {
+        return ['ok' => false, 'error' => 'No active batch.'];
+    }
+    $lastItem = db_one(
+        'SELECT * FROM intake_items WHERE batch_id = ? ORDER BY message_id DESC, id DESC LIMIT 1',
+        [$batch['id']]
+    );
+    if (!$lastItem) {
+        return ['ok' => false, 'error' => 'Nothing staged to undo.'];
+    }
+    $root = dirname(__DIR__);
+    $rel  = (string) $lastItem['file_path'];
+    if (str_starts_with($rel, 'storage/uploads/') && is_file($root . '/' . $rel)) {
+        @unlink($root . '/' . $rel);
+    }
+    // Sheet marker: media_group = 'sheet' with empty file_path, caption = sheet name
+    if ((string) $lastItem['media_group'] === 'sheet') {
+        db_exec("UPDATE intake_batches SET sheet_name = '', sheet_data = '', row_count = 0, updated_at = NOW() WHERE id = ?", [$batch['id']]);
+    }
+    db_exec('DELETE FROM intake_items WHERE id = ?', [$lastItem['id']]);
+    return ['ok' => true, 'removed' => 1];
 }
 
 /** Has this Telegram message already been stored (webhook retries happen)? */
@@ -479,6 +558,13 @@ function intake_ingest_sheet(array $cfg, int $chatId, array $doc, ?string $bytes
     }
     intake_set_sheet($batchId, $name, $csv, count($parsed['rows']));
 
+    // Store sheet as a special intake_item so /undo can remove it in order
+    db_exec(
+        "INSERT INTO intake_items (batch_id, message_id, media_group, file_path, caption, created_at)
+         VALUES (?, ?, 'sheet', '', ?, NOW())",
+        [$batchId, (int) ($doc['message_id'] ?? 0), $name]
+    );
+
     return [
         'ok'            => true,
         'rows'          => count($parsed['rows']),
@@ -565,7 +651,12 @@ function intake_command_reply(array $cfg, int $chatId, string $text): string
                 . "(the caption is what matches photo to row)\n"
                 . "3. In the shop admin open Telegram Intake > Review > Send to Waiting Room, "
                 . "check the thumbnails, then commit.\n\n"
-                . "/status - what is staged\n/clear - throw the current batch away";
+                . "Commands:\n"
+                . "/status      - what is staged\n"
+                . "/undo        - remove the last message you sent (photo/album or sheet)\n"
+                . "/clearsheet  - drop the sheet, keep photos\n"
+                . "/clearphotos - drop all photos, keep the sheet\n"
+                . "/clear       - nuke everything";
 
         case '/status':
             $batch = intake_active_batch($chatId);
@@ -581,6 +672,33 @@ function intake_command_reply(array $cfg, int $chatId, string $text): string
                 $sheet,
                 intake_photo_count((int) $batch['id'])
             );
+
+        case '/clearsheet':
+            $batch = intake_active_batch($chatId);
+            if ($batch === null) {
+                return 'No active batch.';
+            }
+            $rows = intake_clear_sheet((int) $batch['id']);
+            return sprintf('Cleared sheet (%d row(s)). Photos (%d) kept.', $rows, intake_photo_count((int) $batch['id']));
+
+        case '/clearphotos':
+            $batch = intake_active_batch($chatId);
+            if ($batch === null) {
+                return 'No active batch.';
+            }
+            $removed = intake_clear_photos((int) $batch['id']);
+            $sheet = $batch['sheet_name'] !== '' ? ' (sheet kept)' : '';
+            return sprintf('Cleared %d photo(s)%s.', $removed, $sheet);
+
+        case '/undo':
+            $res = intake_undo_last($chatId);
+            if (!$res['ok']) {
+                return $res['error'];
+            }
+            $batch = intake_active_batch($chatId);
+            $sheet = $batch && $batch['sheet_name'] !== '' ? ' (sheet intact)' : '';
+            $left  = $batch ? intake_photo_count((int) $batch['id']) : 0;
+            return sprintf('Undone 1 message. Photos left: %d%s.', $left, $sheet);
 
         case '/clear':
             $batch = intake_active_batch($chatId);
