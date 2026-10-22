@@ -230,9 +230,14 @@ admin_head('Telegram Intake', 'intake');
             <a href="<?= e(url('admin/intake.php?review=' . (int) $batch['id'] . '&order=' . ($useOrder ? '0' : '1'))) ?>"
                class="text-primary hover:underline">(re-match)</a>
           </label>
+          <?php
+            $allPhotosJson = json_encode(array_map(function($it) {
+                return ['path' => (string)$it['file_path'], 'caption' => (string)$it['caption']];
+            }, $items));
+          ?>
           <button type="button" id="openGalleryBtn"
                   class="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container hover:bg-surface-container-high transition font-label-nav text-label-nav uppercase tracking-wider"
-                  data-all-photos="<?= e(json_encode(array_map(function($it) { return ['path' => (string)$it['file_path'], 'caption' => (string)$it['caption']]; }, $items), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
+                  data-all-photos="<?= e($allPhotosJson) ?>"
                   data-base-url="<?= e(base_url('')) ?>">
             Open gallery picker (all <?= count($items) ?> photos)
           </button>
