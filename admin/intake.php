@@ -172,7 +172,10 @@ admin_head('Telegram Intake', 'intake');
     </div>
   <?php endif; ?>
 
-  <?php if ($batch !== null): $items = intake_items((int) $batch['id']); ?>
+  <?php if ($batch !== null):
+    $items  = intake_items((int) $batch['id']);
+    $photos = array_values(array_filter($items, static fn($it) => (string) ($it['media_group'] ?? '') !== 'sheet' && trim((string) ($it['file_path'] ?? '')) !== ''));
+  ?>
     <?php $work = intake_review_rows($batch); ?>
     <?php if ($work === null): ?>
       <div class="mb-6 p-4 rounded-lg bg-surface-container border border-outline-variant">
@@ -181,9 +184,9 @@ admin_head('Telegram Intake', 'intake');
           Send the .csv/.xlsx from the client's chat (the bot replies with the row count), then reload this page.
         </p>
       </div>
-      <?php if ($items !== []): ?>
+      <?php if ($photos !== []): ?>
         <div class="flex flex-wrap gap-3">
-          <?php foreach ($items as $it): ?>
+          <?php foreach ($photos as $it): ?>
             <img src="<?= e(img_url((string) $it['file_path'])) ?>" alt=""
                  class="w-24 h-28 object-cover rounded-lg border border-outline-variant bg-surface-container"/>
           <?php endforeach; ?>
@@ -206,7 +209,7 @@ admin_head('Telegram Intake', 'intake');
       <div class="mb-4 p-4 rounded-lg bg-surface-container border border-outline-variant font-body-sm text-body-sm">
         <p class="text-on-surface">
           <strong><?= e($batch['sheet_name']) ?></strong> - <?= count($results) ?> row(s),
-          <?= count($items) ?> photo(s) staged.
+          <?= count($photos) ?> photo(s) staged.
           Matched: <strong><?= (int) $stats['sku'] ?></strong> by SKU,
           <strong><?= (int) $stats['caption'] ?></strong> by caption,
           <strong><?= (int) $stats['order'] ?></strong> in send order.
@@ -230,16 +233,16 @@ admin_head('Telegram Intake', 'intake');
             <a href="<?= e(url('admin/intake.php?review=' . (int) $batch['id'] . '&order=' . ($useOrder ? '0' : '1'))) ?>"
                class="text-primary hover:underline">(re-match)</a>
           </label>
-          <?php
-            $allPhotosJson = json_encode(array_map(function($it) {
-                return ['path' => (string)$it['file_path'], 'caption' => (string)$it['caption']];
-            }, $items), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-          ?>
+          <script type="application/json" id="intakeGalleryData">
+            <?= json_encode(array_map(static fn($it) => [
+                'path'    => (string) $it['file_path'],
+                'caption' => (string) ($it['caption'] ?? ''),
+            ], $photos), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>
+          </script>
           <button type="button" id="openGalleryBtn"
                   class="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container hover:bg-surface-container-high transition font-label-nav text-label-nav uppercase tracking-wider"
-                  data-all-photos="<?= $allPhotosJson ?>"
                   data-base-url="<?= e(base_url('')) ?>">
-            Open gallery picker (all <?= count($items) ?> photos)
+            Open gallery picker (all <?= count($photos) ?> photos)
           </button>
         </div>
 
@@ -265,15 +268,20 @@ admin_head('Telegram Intake', 'intake');
                 <tr class="border-t border-outline-variant align-top <?= $invalid ? 'bg-[#fdecea]' : '' ?>" data-row="<?= $i ?>">
                   <td class="p-3 font-mono text-xs text-on-surface-variant"><?= $i + 1 ?></td>
                   <td class="p-3">
-                    <div class="flex gap-2 flex-wrap">
-                      <?php foreach ($auto as $path): ?>
+                    <?php
+                      ob_start();
+                      foreach ($auto as $path): ?>
                         <img src="<?= e(img_url($path)) ?>" alt=""
                              class="w-14 h-16 object-cover rounded border border-outline-variant bg-surface-container"
                              loading="lazy"/>
-                      <?php endforeach; ?>
-                      <?php if ($auto === []): ?>
+                      <?php endforeach;
+                      if ($auto === []): ?>
                         <span class="text-[11px] text-outline self-center">none</span>
-                      <?php endif; ?>
+                      <?php endif;
+                      $origThumbsHtml = ob_get_clean();
+                    ?>
+                    <div class="flex gap-2 flex-wrap row-photo-preview" data-original-html="<?= e($origThumbsHtml) ?>">
+                      <?= $origThumbsHtml ?>
                     </div>
                   </td>
                   <td class="p-3 font-mono text-xs text-on-surface"><?= e((string) $data['sku']) ?></td>
@@ -333,13 +341,16 @@ admin_head('Telegram Intake', 'intake');
       </form>
 
       <!-- Gallery picker modal -->
-      <div id="galleryModal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
-        <div class="absolute inset-0 bg-black/70" id="galleryBackdrop"></div>
-        <div class="absolute inset-2 md:inset-4 bg-surface rounded-2xl shadow-xl flex flex-col max-h-[90vh] w-full"
+      <div id="galleryModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 md:p-6" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
+        <div class="fixed inset-0 bg-black/70 backdrop-blur-xs" id="galleryBackdrop"></div>
+        <div class="relative bg-surface rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden max-w-4xl w-full max-h-[88vh]"
              style="animation: galleryIn 150ms ease-out;">
           <header class="flex items-center justify-between p-4 border-b border-outline-variant bg-surface rounded-t-2xl flex-shrink-0">
-            <h2 id="galleryTitle" class="text-lg font-semibold text-on-surface">Pick a photo for <span id="galleryRowName"></span></h2>
-            <button type="button" id="galleryClose" class="p-2 rounded-full hover:bg-surface-container text-on-surface-variant"
+            <div>
+              <h2 id="galleryTitle" class="text-base md:text-lg font-semibold text-on-surface">Pick a photo for <span id="galleryRowName" class="text-primary font-bold"></span></h2>
+              <p class="text-xs text-on-surface-variant mt-0.5">Click any photo to assign it to this product row.</p>
+            </div>
+            <button type="button" id="galleryClose" class="p-2 rounded-full hover:bg-surface-container text-on-surface-variant text-xl leading-none"
                     aria-label="Close gallery picker">&times;</button>
           </header>
           <div class="p-4 overflow-y-auto flex-1 min-h-0" id="galleryGrid">
@@ -356,56 +367,105 @@ admin_head('Telegram Intake', 'intake');
 
       <style>
         @keyframes galleryIn { from {opacity:0; transform:scale(0.98);} to {opacity:1; transform:scale(1);} }
-        #galleryGrid {display:flex; flex-direction:column; gap:8px;}
-        .gallery-img {cursor:pointer; transition:transform 120ms, box-shadow 120ms, border-color 120ms; width:100%; aspect-ratio:4/3; object-fit:cover;}
-        .gallery-img:hover {transform:scale(1.01); box-shadow:0 4px 16px -4px black; z-index:1;}
-        .gallery-img.selected {border-color:var(--md-sys-color-primary, #6750a4); box-shadow:0 0 0 2px var(--md-sys-color-primary, #6750a4);}
-        .gallery-caption {font-size:11px; color:var(--md-sys-color-on-surface-variant); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
-        .gallery-item {background:var(--md-sys-color-surface-container); border-radius:8px; overflow:hidden; display:flex; flex-direction:row; align-items:center;}
-        .gallery-item.selected {background:var(--md-sys-color-primary-container);}
-        .gallery-item-img {width:160px; height:120px; flex-shrink:0; object-fit:cover;}
-        .gallery-item-meta {flex:1; min-width:0; padding:8px 12px;}
+        #galleryGrid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 12px;
+        }
+        .gallery-item {
+          background: var(--md-sys-color-surface-container, #f3f3f3);
+          border: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
+          border-radius: 8px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          cursor: pointer;
+          transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+        }
+        .gallery-item:hover, .gallery-item:focus {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+          border-color: var(--md-sys-color-primary, #6750a4);
+          outline: none;
+        }
+        .gallery-item.selected {
+          border-color: var(--md-sys-color-primary, #6750a4);
+          box-shadow: 0 0 0 2px var(--md-sys-color-primary, #6750a4);
+        }
+        .gallery-item-img {
+          width: 100%;
+          aspect-ratio: 4/3;
+          object-fit: cover;
+          background: var(--md-sys-color-surface-container-high, #e9e9e9);
+        }
+        .gallery-item-meta {
+          padding: 8px 10px;
+          min-width: 0;
+        }
+        .gallery-caption {
+          font-size: 11px;
+          color: var(--md-sys-color-on-surface-variant, #49454f);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
       </style>
 
       <script>
         (function () {
-          const modal = document.getElementById('galleryModal');
-          const grid  = document.getElementById('galleryGrid');
-          const title = document.getElementById('galleryRowName');
-          const hint  = document.getElementById('galleryHint');
-          const closeBtn = document.getElementById('galleryClose');
-          const backdrop = document.getElementById('galleryBackdrop');
-          const openBtn = document.getElementById('openGalleryBtn');
-          const pickBtns = document.querySelectorAll('.gallery-pick');
+          const modal      = document.getElementById('galleryModal');
+          const grid       = document.getElementById('galleryGrid');
+          const title      = document.getElementById('galleryRowName');
+          const hint       = document.getElementById('galleryHint');
+          const closeBtn   = document.getElementById('galleryClose');
+          const backdrop   = document.getElementById('galleryBackdrop');
+          const openBtn    = document.getElementById('openGalleryBtn');
+          const pickBtns   = document.querySelectorAll('.gallery-pick');
           const rowSelects = document.querySelectorAll('.row-assign');
+          const baseUrl    = <?= json_encode(base_url('')) ?>;
 
           let allPhotos = [];
           let targetRow = null;
 
           function parseData() {
-            if (openBtn) {
-              const raw = openBtn.dataset.allPhotos || '[]';
-              console.log('[gallery] raw length:', raw.length, 'first 200:', raw.slice(0, 200));
-              try { allPhotos = JSON.parse(raw); } catch (e) { allPhotos = []; console.error('[gallery] parse error:', e); }
-              console.log('[gallery] parsed count:', allPhotos.length);
+            const dataEl = document.getElementById('intakeGalleryData');
+            if (dataEl) {
+              try {
+                allPhotos = JSON.parse(dataEl.textContent || '[]');
+              } catch (e) {
+                allPhotos = [];
+                console.error('[gallery] parse error:', e);
+              }
             }
           }
 
-          function renderGrid(filterRow = null) {
-            if (allPhotos.length === 0) {
-              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8">No photos staged yet. (parsed: 0)</p>';
+          function imgUrl(path) {
+            if (!path) return '';
+            if (/^(https?:)?\/\//i.test(path) || path.startsWith('data:')) return path;
+            const base = (baseUrl || '').replace(/\/+$/, '');
+            return base + '/' + path.replace(/^\/+/, '');
+          }
+
+          function renderGrid() {
+            if (!allPhotos || allPhotos.length === 0) {
+              grid.innerHTML = '<p class="text-center text-on-surface-variant py-8 col-span-full">No photos staged in this batch yet. Send photos to the bot and reload.</p>';
               return;
             }
-            console.log('[gallery] rendering', allPhotos.length, 'photos');
-            grid.innerHTML = allPhotos.map((photo, idx) => {
+
+            const currentVal = targetRow !== null
+              ? (document.querySelector(`select.row-assign[data-row="${targetRow}"]`)?.value || '')
+              : '';
+
+            grid.innerHTML = allPhotos.map((photo) => {
               const cap = photo.caption || '';
-              const short = cap.length > 80 ? cap.slice(0, 77) + '…' : cap;
+              const short = cap.length > 60 ? cap.slice(0, 57) + '…' : cap;
               const filename = photo.path.split('/').pop();
-              return `<div class="gallery-item" data-path="${photo.path}" tabindex="0" role="button" aria-label="${short || filename}">
+              const isSelected = currentVal !== '' && currentVal === photo.path;
+              return `<div class="gallery-item ${isSelected ? 'selected' : ''}" data-path="${photo.path}" tabindex="0" role="button" aria-label="${short || filename}">
                 <img src="${imgUrl(photo.path)}" alt="${short || filename}" class="gallery-item-img" loading="lazy">
                 <div class="gallery-item-meta">
-                  <div class="font-mono text-xs text-on-surface-variant truncate">${filename}</div>
-                  ${short ? `<div class="gallery-caption truncate">${short}</div>` : ''}
+                  <div class="font-mono text-xs text-on-surface truncate font-semibold">${filename}</div>
+                  ${short ? `<div class="gallery-caption mt-0.5">${short}</div>` : ''}
                 </div>
               </div>`;
             }).join('');
@@ -413,26 +473,27 @@ admin_head('Telegram Intake', 'intake');
             grid.querySelectorAll('.gallery-item').forEach(item => {
               item.addEventListener('click', () => selectPhoto(item.dataset.path));
               item.addEventListener('keydown', e => {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectPhoto(item.dataset.path); }
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  selectPhoto(item.dataset.path);
+                }
               });
             });
-          }
-
-          function imgUrl(path) {
-            const base = openBtn?.dataset.baseUrl || '';
-            return base + 'storage/uploads/' + path.replace(/^storage\/uploads\//, '');
           }
 
           function openModal(rowIdx) {
             targetRow = rowIdx;
             const row = document.querySelector(`tr[data-row="${rowIdx}"]`);
             const name = row ? row.querySelector('td:nth-child(4)')?.textContent?.trim() : '';
-            title.textContent = name || `row ${rowIdx + 1}`;
+            title.textContent = name || (rowIdx !== null ? `row ${rowIdx + 1}` : 'batch');
             parseData();
             renderGrid();
             modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
-            setTimeout(() => grid.querySelector('.gallery-item')?.focus(), 50);
+            setTimeout(() => {
+              const selected = grid.querySelector('.gallery-item.selected') || grid.querySelector('.gallery-item');
+              selected?.focus();
+            }, 50);
           }
 
           function closeModal() {
@@ -442,9 +503,26 @@ admin_head('Telegram Intake', 'intake');
           }
 
           function selectPhoto(path) {
-            if (targetRow === null) return;
+            if (targetRow === null) {
+              closeModal();
+              return;
+            }
             const sel = document.querySelector(`select.row-assign[data-row="${targetRow}"]`);
             if (sel) {
+              let found = false;
+              for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value === path) {
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) {
+                const filename = path.split('/').pop();
+                const opt = document.createElement('option');
+                opt.value = path;
+                opt.textContent = filename + ' (manual pick)';
+                sel.appendChild(opt);
+              }
               sel.value = path;
               sel.dispatchEvent(new Event('change', { bubbles: true }));
             }
@@ -452,26 +530,37 @@ admin_head('Telegram Intake', 'intake');
           }
 
           pickBtns.forEach(btn => btn.addEventListener('click', () => openModal(parseInt(btn.dataset.row, 10))));
-          openBtn?.addEventListener('click', () => openModal(
-            Math.max(...Array.from(rowSelects).map(s => parseInt(s.dataset.row, 10)), 0)
-          ));
+          openBtn?.addEventListener('click', () => {
+            const firstRow = rowSelects.length > 0 ? parseInt(rowSelects[0].dataset.row, 10) : 0;
+            openModal(firstRow);
+          });
           closeBtn.addEventListener('click', closeModal);
           backdrop.addEventListener('click', closeModal);
           document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
           });
 
-          // Keyboard nav in grid
-          grid.addEventListener('keydown', e => {
-            const items = grid.querySelectorAll('.gallery-item');
-            if (!items.length) return;
-            const focused = document.activeElement;
-            const idx = Array.from(items).indexOf(focused);
-            if (idx === -1) return;
-            if (e.key === 'ArrowRight' && idx + 1 < items.length) { items[idx + 1].focus(); e.preventDefault(); }
-            else if (e.key === 'ArrowLeft' && idx > 0) { items[idx - 1].focus(); e.preventDefault(); }
-            else if (e.key === 'ArrowDown' && idx + 4 < items.length) { items[idx + 4].focus(); e.preventDefault(); }
-            else if (e.key === 'ArrowUp' && idx - 4 >= 0) { items[idx - 4].focus(); e.preventDefault(); }
+          // Live thumbnail preview update when assignment select changes
+          rowSelects.forEach(sel => {
+            sel.addEventListener('change', () => {
+              const rowIdx = sel.dataset.row;
+              const row = document.querySelector(`tr[data-row="${rowIdx}"]`);
+              if (!row) return;
+              const previewBox = row.querySelector('.row-photo-preview');
+              if (!previewBox) return;
+
+              const val = sel.value;
+              if (val === 'none') {
+                previewBox.innerHTML = '<span class="text-[11px] text-outline self-center">no image</span>';
+              } else if (val !== '') {
+                previewBox.innerHTML = `<img src="${imgUrl(val)}" alt="" class="w-14 h-16 object-cover rounded border-2 border-primary bg-surface-container shadow-xs" loading="lazy"/>`;
+              } else {
+                const originalHtml = previewBox.dataset.originalHtml;
+                if (originalHtml) {
+                  previewBox.innerHTML = originalHtml;
+                }
+              }
+            });
           });
         })();
       </script>
