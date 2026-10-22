@@ -158,6 +158,38 @@ If the host has shell access disabled, the same loop runs inside cPanel:
 allows. The Deploy button only needs `tar` (present on every host);
 `deploy.sh` needs `rsync`, which Git Bash and most shells provide.
 
+## Telegram intake (product batches)
+
+Clients send a spreadsheet and product photos to a Telegram bot; the bot stages
+them and the admin panel matches the photos onto the sheet rows before
+anything goes live.
+
+1. Create a bot with `@BotFather` and copy its token.
+2. Add to `.env` (server and local):
+
+       TG_BOT_TOKEN=<token from BotFather>
+       TG_WEBHOOK_SECRET=<php -r "echo bin2hex(random_bytes(16));">
+       TG_ALLOWED_CHAT_IDS=<your numeric chat id, ask @userinfobot>
+
+3. Register the webhook: `php tools/tg_set_webhook.php` (uses `APP_URL`).
+   Check delivery/errors later with `php tools/tg_webhook_info.php`.
+4. The client chats with the bot: sends the `.csv` or `.xlsx` sheet, then the
+   photos - ideally **one album per product, captioned with the product name**
+   (the caption drives matching; a SKU in the caption matches even better).
+   `/status` shows what is staged, `/clear` throws the batch away.
+5. Admin - **Telegram Intake**: review the match (by SKU, caption or send
+   order; leftovers attach by hand), then *Send to Waiting Room* and commit as
+   usual in **Bulk Products**. The bot never publishes anything by itself -
+   every commit stays behind the admin login and CSRF.
+
+Local development needs no Telegram: `php tools/tg_simulate_update.php
+sheet path/batch.csv` and `... photo path/img.jpg --caption "Aura Bodysuit"`
+feed the same dispatch the webhook uses, with files from disk.
+
+The tables `intake_batches` / `intake_items` are created lazily on first use
+(and ship in `schema.sql` for fresh installs). Photos are validated exactly
+like `admin/upload.php` and land in `storage/uploads/`.
+
 ## Checks and tests
 
 ```powershell
@@ -171,8 +203,8 @@ secrets; hide it by removing the `tools/doctor.php` exception in `.htaccess`).
 ### Smoke suites (security + stock)
 
 ```powershell
-php tools/smoke.php        # 26 command-level checks
-php tools/smoke_http.php   # 37 end-to-end checks over HTTP
+php tools/smoke.php        # 45 command-level checks
+php tools/smoke_http.php   # 44 end-to-end checks over HTTP
 ```
 
 Both provision a throwaway `<DB_NAME>_smoke` from `schema.sql` + `seed.sql` and
@@ -187,9 +219,11 @@ password for the duration of the run, because the seed no longer ships one.
 
 They cover sign-in throttling, `FOR UPDATE` stock reservation and rollback, cart
 clamping, the abandoned-order sweeper, Paystack amount/verification guards,
-production's demo-order refusal, order-confirmation IDOR, checkout CSRF and
-oversell refusal. Exit code 0 means all 63 passed. Run them one at a time -
-they share the database name - and note they are CLI-only.
+production's demo-order refusal, order-confirmation IDOR, checkout CSRF,
+oversell refusal and the Telegram intake pipeline (staging, caption/SKU/order
+matching, the xlsx reader, discard, webhook secret/whitelist gating). Exit code
+0 means all 89 passed. Run them one at a time - they share the database name -
+and note they are CLI-only.
 
 Other regression/CDP suites live outside the repo (dev machine only).
 

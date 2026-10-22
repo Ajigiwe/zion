@@ -14,8 +14,9 @@
  *   8097  APP_ENV=production   - the same flow must be refused, while cash on
  *                                delivery still works
  *
- * 37 checks: page rendering, sign-in success and brute-force throttling, the
- * checkout/stock path, order-confirmation IDOR, and the production demo gate.
+ * 44 checks: page rendering, sign-in success and brute-force throttling, the
+ * checkout/stock path, order-confirmation IDOR, the production demo gate and
+ * the Telegram webhook's secret header / chat whitelist.
  *
  * Both servers and the database are torn down on exit, pass or fail.
  */
@@ -57,12 +58,24 @@ foreach (glob(sys_get_temp_dir() . '/velora_jar_' . $GLOBALS['smoke_run'] . '_*.
 
 $keys = ['PAYSTACK_PUBLIC_KEY' => '', 'PAYSTACK_SECRET_KEY' => ''];
 
-$dev = smoke_server(8098, $keys + [
+// Telegram webhook tests: the secret is set, the bot token is deliberately
+// empty (replies and downloads must fail silently and never reach the
+// network), and exactly one chat is whitelisted.
+$whSecret = 'smoke' . bin2hex(random_bytes(10));
+$whChat   = 999001;
+$whOther  = 999002;
+$tgKeys   = [
+    'TG_BOT_TOKEN'        => '',
+    'TG_WEBHOOK_SECRET'   => $whSecret,
+    'TG_ALLOWED_CHAT_IDS' => (string) $whChat,
+];
+
+$dev = smoke_server(8098, $keys + $tgKeys + [
     'APP_ENV'  => 'development',
     'APP_DEBUG' => 'true',
     'APP_URL'  => 'http://127.0.0.1:8098',
 ]);
-$prod = smoke_server(8097, $keys + [
+$prod = smoke_server(8097, $keys + $tgKeys + [
     'APP_ENV'  => 'production',
     'APP_DEBUG' => 'false',
     'APP_URL'  => 'http://127.0.0.1:8097',
@@ -277,6 +290,57 @@ $back = req($devBase . '/cart.php', null, smoke_jar('over'));
 okk('customer is told what is left', str_contains($back['body'], 'Only 1 left of'), dirty($back['body']));
 okk('no stock was taken', $int($pdo, "SELECT stock FROM products WHERE id = $productId") === 1);
 okk('no order was written', $int($pdo, "SELECT COUNT(*) FROM orders WHERE customer_name = 'Race Test'") === 0);
+
+/* -------------------------------------------------- G: telegram webhook --- */
+
+group('telegram webhook: secret gate, whitelist, no side effects');
+
+$whUrl   = $devBase . '/tg_webhook.php';
+$update  = static fn (int $chat, array $extra): string => json_encode([
+    'message' => $extra + ['message_id' => random_int(100000, 999999), 'chat' => ['id' => $chat]],
+]);
+$post    = static fn (string $body, string $secret): array => req($whUrl, null, null, [
+    'raw'     => $body,
+    'headers' => array_values(array_filter([
+        'Content-Type: application/json',
+        $secret !== '' ? 'X-Telegram-Bot-Api-Secret-Token: ' . $secret : '',
+    ])),
+]);
+// A missing table simply means nothing has ever been staged.
+$stagedBatches = static fn (PDO $p): int => (static function () use ($p): int {
+    try {
+        return (int) $p->query('SELECT COUNT(*) FROM intake_batches')->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
+    }
+})();
+$stagedItems = static fn (PDO $p): int => (static function () use ($p): int {
+    try {
+        return (int) $p->query('SELECT COUNT(*) FROM intake_items')->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
+    }
+})();
+
+$foreignUpdate = $update($whOther, ['text' => '/start']);
+
+$r = $post($foreignUpdate, '');
+okk('webhook without the secret header is refused', $r['code'] === 401, 'code=' . $r['code']);
+
+$r = $post($foreignUpdate, 'not-the-secret');
+okk('webhook with a wrong secret is refused', $r['code'] === 401, 'code=' . $r['code']);
+
+$r = $post('{this is not json', $whSecret);
+okk('garbage body is rejected', $r['code'] === 400, 'code=' . $r['code']);
+
+$r = $post($foreignUpdate, $whSecret);
+okk('foreign chat is acknowledged but ignored', $r['code'] === 200, 'code=' . $r['code'] . ' ' . substr(strip_tags($r['body']), 0, 80));
+
+$r = $post($update($whChat, ['text' => '/status']), $whSecret);
+okk('whitelisted command is served over 200', $r['code'] === 200, 'code=' . $r['code']);
+
+okk('no batch was staged by any rejected request', $stagedBatches($pdo) === 0, 'batches=' . $stagedBatches($pdo));
+okk('no photo row was written either', $stagedItems($pdo) === 0, 'items=' . $stagedItems($pdo));
 
 /* ---------------------------------------------------------------- summary */
 

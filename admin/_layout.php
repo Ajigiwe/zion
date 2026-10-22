@@ -24,6 +24,7 @@ function admin_nav_items(): array
         'index'         => ['dashboard', 'Dashboard'],
         'products'      => ['category', 'Products'],
         'bulk_products' => ['dataset', 'Bulk Products'],
+        'intake'        => ['inbox', 'Telegram Intake'],
         'categories'    => ['list_alt', 'Categories'],
         'brands'        => ['sell', 'Brands'],
         'orders'        => ['receipt_long', 'Orders'],
@@ -50,6 +51,19 @@ function admin_pending_reviews(): int
 {
     try {
         return (int) db_val('SELECT COUNT(*) FROM reviews WHERE is_approved = 0', [], 0);
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
+/** Telegram batches waiting for review, for the sidebar badge. */
+function admin_pending_intake(): int
+{
+    try {
+        if (!function_exists('intake_pending_count')) {
+            require_once __DIR__ . '/../includes/intake_service.php';
+        }
+        return intake_pending_count();
     } catch (Throwable $e) {
         return 0;
     }
@@ -177,10 +191,16 @@ function admin_head(string $title, string $active = ''): void
         $badge     = match ($key) {
             'messages' => admin_unread_messages(),
             'reviews'  => admin_pending_reviews(),
+            'intake'   => admin_pending_intake(),
             default    => 0,
         };
+        $navSuffix = match ($key) {
+            'reviews' => ' pending',
+            'intake'  => ' waiting',
+            default   => ' unread',
+        };
         $navTitle  = $badge > 0
-            ? $label . ' (' . $badge . ($key === 'reviews' ? ' pending' : ' unread') . ')'
+            ? $label . ' (' . $badge . $navSuffix . ')'
             : $label;
         ?>
         <a class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg font-body-sm text-body-sm transition-colors

@@ -12,6 +12,8 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS `reviews`;
 DROP TABLE IF EXISTS `contact_messages`;
 DROP TABLE IF EXISTS `login_attempts`;
+DROP TABLE IF EXISTS `intake_items`;
+DROP TABLE IF EXISTS `intake_batches`;
 DROP TABLE IF EXISTS `settings`;
 DROP TABLE IF EXISTS `order_events`;
 DROP TABLE IF EXISTS `order_items`;
@@ -375,6 +377,43 @@ CREATE TABLE `login_attempts` (
   `last_attempt_at` DATETIME     NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_login_attempts_scope_ident` (`scope`,`ident`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------- intake_batches
+-- Telegram product intake: one row per staged batch (spreadsheet + photos)
+-- arriving through tg_webhook.php from an approved chat. includes/
+-- intake_service.php also ensures these two tables lazily, so an existing
+-- install picks them up without re-importing schema.sql.
+CREATE TABLE `intake_batches` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `chat_id`    BIGINT NOT NULL,
+  `label`      VARCHAR(160) NOT NULL DEFAULT '',
+  `sheet_name` VARCHAR(190) NOT NULL DEFAULT '',
+  `sheet_data` MEDIUMTEXT NULL,
+  `row_count`  INT UNSIGNED NOT NULL DEFAULT 0,
+  `status`     ENUM('pending','claimed','discarded') NOT NULL DEFAULT 'pending',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_intake_status` (`status`,`chat_id`,`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------- intake_items
+-- One staged photo per Telegram message (message_id makes webhook retries
+-- harmless; media_group_id keeps an album together as one product gallery).
+CREATE TABLE `intake_items` (
+  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `batch_id`    BIGINT UNSIGNED NOT NULL,
+  `message_id`  BIGINT UNSIGNED NOT NULL,
+  `media_group` VARCHAR(64) NOT NULL DEFAULT '',
+  `file_path`   VARCHAR(255) NOT NULL,
+  `caption`     VARCHAR(512) NOT NULL DEFAULT '',
+  `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_intake_batch_message` (`batch_id`,`message_id`),
+  KEY `idx_intake_batch_order` (`batch_id`,`message_id`),
+  CONSTRAINT `fk_intake_batch` FOREIGN KEY (`batch_id`)
+    REFERENCES `intake_batches` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

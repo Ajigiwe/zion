@@ -5,7 +5,7 @@
  * CLI:   php tools/doctor.php        (exit code 1 when something fails)
  * Web:   /tools/doctor.php           (DELETE THIS FILE after checking)
  *
- * Prints PASS / WARN / FAIL rows only - never secret values.
+ * Prints PASS / WARN / FAIL / INFO rows only - never secret values.
  */
 
 declare(strict_types=1);
@@ -210,6 +210,28 @@ if (!$isCli) {
 }
 chk('.htaccess present', is_file($root . '/.htaccess') ? 'PASS' : 'FAIL', 'Apache document roots need it (AllowOverride All)');
 
+/* ---------------------------------------------------------- telegram ----- */
+$tgToken  = $get('TG_BOT_TOKEN');
+$tgSecret = $get('TG_WEBHOOK_SECRET');
+$tgChats  = array_filter(array_map('trim', explode(',', $get('TG_ALLOWED_CHAT_IDS'))), static fn($c) => $c !== '');
+if ($tgToken !== '' && $tgSecret !== '' && $tgChats !== []) {
+    chk('telegram intake', 'PASS', count($tgChats) . ' whitelisted chat(s) - webhook endpoint /tg_webhook.php');
+} elseif ($tgToken === '' && $tgSecret === '' && $tgChats === []) {
+    chk('telegram intake', 'INFO', 'not configured - set TG_BOT_TOKEN / TG_WEBHOOK_SECRET / TG_ALLOWED_CHAT_IDS in .env to accept product batches from Telegram');
+} else {
+    $tgMissing = [];
+    if ($tgToken === '') {
+        $tgMissing[] = 'TG_BOT_TOKEN';
+    }
+    if ($tgSecret === '') {
+        $tgMissing[] = 'TG_WEBHOOK_SECRET';
+    }
+    if ($tgChats === []) {
+        $tgMissing[] = 'TG_ALLOWED_CHAT_IDS';
+    }
+    chk('telegram intake', 'WARN', 'partially configured - missing ' . implode(', ', $tgMissing) . ' in .env');
+}
+
 /* ------------------------------------------------------------- out ------ */
 $fails = count(array_filter($rows, static fn($r) => $r[1] === 'FAIL'));
 $warns = count(array_filter($rows, static fn($r) => $r[1] === 'WARN'));
@@ -227,7 +249,7 @@ echo '<!doctype html><meta charset="utf-8"><title>Zion - server check</title>';
 echo '<style>body{font:14px/1.5 ui-monospace,Consolas,monospace;margin:2rem;background:#111;color:#eee}'
     . 'table{border-collapse:collapse;width:100%;max-width:900px}'
     . 'td,th{border-bottom:1px solid #333;padding:.5rem;text-align:left;vertical-align:top}'
-    . '.PASS{color:#7ee787}.WARN{color:#e3b341}.FAIL{color:#ff7b72;font-weight:700}'
+    . '.PASS{color:#7ee787}.WARN{color:#e3b341}.FAIL{color:#ff7b72;font-weight:700}.INFO{color:#79c0ff}'
     . '.banner{background:#7a1220;color:#fff;padding:1rem;margin-bottom:1.5rem;max-width:900px}</style>';
 echo '<div class="banner"><strong>Read-only diagnostics - no secrets are printed.</strong> '
     . 'Safe to leave in place; to hide this page, remove the tools/doctor.php exception in .htaccess.</div>';

@@ -5,13 +5,14 @@
  *   php tools/smoke.php            run, then drop the throwaway database
  *   php tools/smoke.php --keep     keep <DB_NAME>_smoke for inspection
  *
- * 26 checks: sign-in throttle, FOR UPDATE stock reservation, cart clamping,
- * the abandoned-order sweeper and the Paystack verification guard. Everything
- * runs against a throwaway database provisioned by tools/smoke_lib.php, so the
- * application's own data is never touched.
+ * 45 checks: sign-in throttle, FOR UPDATE stock reservation, cart clamping,
+ * the abandoned-order sweeper, the Paystack verification guard and the
+ * Telegram intake pipeline (staging, matching, xlsx, discard - fully offline).
+ * Everything runs against a throwaway database provisioned by
+ * tools/smoke_lib.php, so the application's own data is never touched.
  *
- * For the 37 checks that go through HTTP (login, checkout, IDOR, production
- * demo-order refusal), run tools/smoke_http.php.
+ * For the 44 checks that go through HTTP (login, checkout, IDOR, production
+ * demo-order refusal, webhook gating), run tools/smoke_http.php.
  */
 declare(strict_types=1);
 
@@ -213,6 +214,162 @@ okk(
     'order rows expose a numeric total for the amount check',
     (float) db_val('SELECT total FROM orders WHERE id = ?', [$orderId]) > 0.0
 );
+
+/* ------------------------------------------------------ G: telegram intake */
+
+group('telegram intake: staging, matching, xlsx, discard (fully offline)');
+
+require_once smoke_root() . '/includes/intake_service.php';
+require_once smoke_root() . '/includes/intake_matcher.php';
+require_once smoke_root() . '/includes/intake_xlsx.php';
+
+// Idempotency for --keep runs: drop anything an earlier attempt staged.
+intake_tables();
+db_exec('DELETE FROM intake_items');
+db_exec('DELETE FROM intake_batches');
+
+$tgChat = 111222333;
+$tgCfg  = ['token' => '', 'secret' => 'smoke', 'chats' => [$tgChat]];
+
+okk('intake tables ensured', (int) db_val('SELECT COUNT(*) FROM intake_batches') === 0);
+
+// A stranger must get silence and change nothing.
+$reply = intake_dispatch($tgCfg, ['message' => ['message_id' => 1, 'chat' => ['id' => 999], 'text' => '/start']]);
+okk('non-whitelisted chat is a silent no-op', $reply === '' && (int) db_val('SELECT COUNT(*) FROM intake_batches') === 0);
+
+// The spreadsheet.
+$csv = "sku,name,department,category,brand,price,stock\n"
+     . "SMK-INT-0001,Aura Bodysuit,lingerie,Bodysuits,Velora,89.00,5\n"
+     . "SMK-INT-0002,Yamaha Drumsticks,instruments,Drumsticks,Yamaha,45.00,7\n"
+     . "SMK-INT-0003,Silk Chemise,lingerie,Chemises,Velora,70.00,3\n";
+$reply = intake_dispatch($tgCfg, [
+    'message' => [
+        'message_id' => 2,
+        'chat'       => ['id' => $tgChat],
+        'document'   => ['file_id' => 'local-sheet', 'file_name' => 'batch.csv', 'file_size' => strlen($csv)],
+    ],
+], ['local-sheet' => $csv]);
+$batch    = intake_active_batch($tgChat);
+$batchId  = (int) ($batch['id'] ?? 0);
+okk('sheet staged and answered with the row count', str_contains($reply, '3 product rows') && $batch !== null, $reply);
+okk('batch remembers the sheet', $batch !== null && (int) $batch['row_count'] === 3 && (string) $batch['sheet_name'] === 'batch.csv', json_encode($batch));
+
+// Photos: captioned singles, one album (caption on its first member), a SKU.
+// No image ships in the repo, so build a valid 1x1 PNG by hand (no GD needed):
+// intake_save_image() still validates it with finfo + getimagesizefromstring.
+$makePng = static function (): string {
+    $chunk = static fn (string $type, string $data): string =>
+        pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+    return "\x89PNG\r\n\x1a\n"
+        . $chunk('IHDR', pack('NNCCCCC', 1, 1, 8, 2, 0, 0, 0))
+        . $chunk('IDAT', gzcompress("\x00\xFF\x00\x00"))
+        . $chunk('IEND', '');
+};
+$photoBytes = $makePng();
+
+$sendPhoto = static function (array $cfg, int $chat, int $msgId, string $caption, string $album, string $bytes): string {
+    $msg = [
+        'message_id' => $msgId,
+        'chat'       => ['id' => $chat],
+        'photo'      => [['file_id' => 'local-' . $msgId, 'width' => 100, 'height' => 100]],
+    ];
+    if ($caption !== '') {
+        $msg['caption'] = $caption;
+    }
+    if ($album !== '') {
+        $msg['media_group_id'] = $album;
+    }
+    return intake_dispatch($cfg, ['message' => $msg], ['local-' . $msgId => $bytes]);
+};
+
+$replies = [
+    $sendPhoto($tgCfg, $tgChat, 10, 'Aura Bodysuit', '', $photoBytes),
+    $sendPhoto($tgCfg, $tgChat, 11, 'Yamaha Drumsticks', 'ALB-1', $photoBytes),
+    $sendPhoto($tgCfg, $tgChat, 12, '', 'ALB-1', $photoBytes),
+    $sendPhoto($tgCfg, $tgChat, 13, 'SMK-INT-0003', '', $photoBytes),
+];
+$photoErrors = array_values(array_filter($replies));
+okk('photo uploads are accepted silently', $photoErrors === [], implode(' | ', $photoErrors));
+okk('four photos staged into the batch', intake_photo_count($batchId) === 4, 'n=' . intake_photo_count($batchId));
+
+// Telegram retries the same update: must not double-store.
+$sendPhoto($tgCfg, $tgChat, 12, '', 'ALB-1', $photoBytes);
+okk('webhook retry (same message_id) is deduplicated', intake_photo_count($batchId) === 4, 'n=' . intake_photo_count($batchId));
+
+// Matching: caption, album grouping, SKU - with order fallback OFF.
+$items   = intake_items($batchId);
+$parsed  = bulk_parse_csv_string($csv);
+$preview = bulk_preview_validation($parsed['rows']);
+$match   = intake_match($preview['results'], $items, ['order_fallback' => false]);
+
+okk('row 1 matched by caption', ($match['assignments'][0]['method'] ?? '') === 'caption', json_encode($match['assignments'][0] ?? null));
+okk('album keeps both photos on row 2', count($match['assignments'][1]['paths'] ?? []) === 2 && ($match['assignments'][1]['method'] ?? '') === 'caption', json_encode($match['assignments'][1] ?? null));
+okk('row 3 matched by SKU', ($match['assignments'][2]['method'] ?? '') === 'sku', json_encode($match['assignments'][2] ?? null));
+okk('no leftovers with order fallback off', $match['stats']['unmatched'] === 0 && $match['stats']['leftovers'] === 0, json_encode($match['stats']));
+
+$pathsOk = count($items) === 4;
+foreach ($items as $it) {
+    $rel = (string) $it['file_path'];
+    $pathsOk = $pathsOk && str_starts_with($rel, 'storage/uploads/') && is_file(smoke_root() . '/' . $rel);
+}
+okk('staged photos land in storage/uploads and exist on disk', $pathsOk, implode(',', array_column($items, 'file_path')));
+
+// Order fallback on/off, and an ambiguous caption left for the human.
+$flat = [
+    [['data' => ['sku' => '', 'name' => 'Product A']], ['data' => ['sku' => '', 'name' => 'Product B']]],
+    [['id' => 1, 'file_path' => 'storage/uploads/a.jpg', 'caption' => ''],
+     ['id' => 2, 'file_path' => 'storage/uploads/b.jpg', 'caption' => '']],
+];
+$withOrder    = intake_match($flat[0], $flat[1], ['order_fallback' => true]);
+$withoutOrder = intake_match($flat[0], $flat[1], ['order_fallback' => false]);
+okk('order fallback pairs rows to photos in send order',
+    ($withOrder['assignments'][0]['paths'][0] ?? '') === 'storage/uploads/a.jpg'
+    && ($withOrder['assignments'][1]['paths'][0] ?? '') === 'storage/uploads/b.jpg'
+    && ($withOrder['assignments'][0]['method'] ?? '') === 'order'
+);
+okk('order fallback can be switched off', $withoutOrder['stats']['unmatched'] === 2, json_encode($withoutOrder['stats']));
+
+$tie = intake_match(
+    [['data' => ['sku' => '', 'name' => 'Black Lace Bra']], ['data' => ['sku' => '', 'name' => 'Black Silk Slip']]],
+    [['id' => 9, 'file_path' => 'storage/uploads/x.jpg', 'caption' => 'black']],
+    ['order_fallback' => false]
+);
+okk('ambiguous caption is left for the human, not guessed', $tie['stats']['unmatched'] === 2 && $tie['stats']['leftovers'] === 1, json_encode($tie['stats']));
+
+// The .xlsx reader (shared strings + inline strings + numbers).
+$xlsx = tempnam(sys_get_temp_dir(), 'smkxlsx') . '.xlsx';
+$zip  = new ZipArchive();
+$zip->open($xlsx, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+$zip->addFromString('xl/sharedStrings.xml', '<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="3" uniqueCount="3"><si><t>sku</t></si><si><t>name</t></si><si><t>price</t></si></sst>');
+$zip->addFromString('xl/worksheets/sheet1.xml', '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+    . '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row>'
+    . '<row r="2"><c r="A2" t="inlineStr"><is><t>SMK-INT-0009</t></is></c><c r="B2" t="inlineStr"><is><t>Lace Garter Belt</t></is></c><c r="C2"><v>12.5</v></c></row>'
+    . '</sheetData></worksheet>');
+$zip->close();
+
+$xlsxError = '';
+try {
+    $fromXlsx = intake_xlsx_to_csv($xlsx);
+} catch (Throwable $e) {
+    $fromXlsx = '';
+    $xlsxError = $e->getMessage();
+}
+@unlink($xlsx);
+okk('xlsx converted without throwing', $xlsxError === '' && $fromXlsx !== '', $xlsxError . ' ' . $fromXlsx);
+if ($xlsxError === '') {
+    $parsedX = bulk_parse_csv_string($fromXlsx);
+    okk('xlsx rows land in the bulk parser', count($parsedX['rows'] ?? []) === 1
+        && (string) ($parsedX['rows'][0]['sku'] ?? '') === 'SMK-INT-0009'
+        && str_contains((string) ($parsedX['rows'][0]['price'] ?? ''), '12.5'),
+        json_encode($parsedX['rows'][0] ?? ($parsedX['error'] ?? null)));
+}
+
+// Discard: the staged files must leave disk too.
+$staged  = array_column(intake_items($batchId), 'file_path');
+$removed = intake_discard($batchId);
+$left    = array_filter($staged, static fn($p) => is_file(smoke_root() . '/' . $p));
+okk('discard deletes every staged photo', $removed === count($staged) && $left === [], 'removed=' . $removed . ' left=' . count($left));
+okk('discard marks the batch as discarded', (string) db_val('SELECT status FROM intake_batches WHERE id = ?', [$batchId]) === 'discarded');
 
 /* ---------------------------------------------------------------- summary */
 

@@ -285,8 +285,12 @@ function smoke_jar(string $tag): string
     return sys_get_temp_dir() . '/velora_jar_' . $GLOBALS['smoke_run'] . '_' . $tag . '.txt';
 }
 
-/** One request. $post null = GET. Cookies persist through $jar (a file path). */
-function req(string $url, ?array $post = null, ?string $jar = null): array
+/**
+ * One request. $post null = GET. Cookies persist through $jar (a file path).
+ * $opts: 'raw' => body string (used instead of $post, for JSON endpoints),
+ *        'headers' => list of "Name: value" lines.
+ */
+function req(string $url, ?array $post = null, ?string $jar = null, array $opts = []): array
 {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -298,9 +302,15 @@ function req(string $url, ?array $post = null, ?string $jar = null): array
         CURLOPT_COOKIEFILE     => $jar,
         CURLOPT_USERAGENT      => 'velora-smoke/1.0',
     ]);
-    if ($post !== null) {
+    if (array_key_exists('raw', $opts)) {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, (string) $opts['raw']);
+    } elseif ($post !== null) {
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post));
+    }
+    if (!empty($opts['headers'])) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, (array) $opts['headers']);
     }
     $raw       = (string) curl_exec($ch);
     $code      = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
